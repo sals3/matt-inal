@@ -1,0 +1,9 @@
+dbs:
+  - path: ${DB_PATH}
+    replicas:
+      - type: abs
+        account-name: ${AZURE_STORAGE_ACCOUNT}
+        account-key: ${AZURE_STORAGE_KEY}
+        bucket: ${LITESTREAM_CONTAINER}
+        path: matt-inal
+        sync-interval: 1s
