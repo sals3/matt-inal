@@ -203,6 +203,13 @@ server = Bun.serve<WsData, any>({
       return json(store.quizzes(from, to));
     },
     "/api/quizzes/:day": {
+      DELETE: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        if (!isDay(req.params.day)) return fail("Date invalide.");
+        if (game.quiz?.day === req.params.day) return fail("Ce quiz est en cours : ferme la partie d'abord.");
+        store.deleteQuiz(req.params.day);
+        return json({ ok: true });
+      },
       GET: (req) => {
         if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
         return isDay(req.params.day) ? json(store.quizByDay(req.params.day)) : fail("Date invalide.");
@@ -242,7 +249,23 @@ server = Bun.serve<WsData, any>({
     },
     "/api/players": (req) => (isAdmin(req) ? json(store.players()) : fail("Réservé à Matt.", 401)),
     "/api/players/:id/recovery": (req) => (isAdmin(req) ? json({ code: store.recoveryOf(req.params.id) }) : fail("Réservé à Matt.", 401)),
+    "/api/games": (req) => (isAdmin(req) ? json(store.games()) : fail("Réservé à Matt.", 401)),
+    "/api/games/:id": {
+      DELETE: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        if (game.gameId === req.params.id) return fail("Cette partie est en cours : ferme-la d'abord.");
+        store.deleteGame(req.params.id);
+        return json({ ok: true });
+      },
+    },
     "/api/players/:id": {
+      DELETE: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        if (game.phase !== "idle") return fail("Attends la fin de la partie en cours.");
+        if (!store.player(req.params.id)) return fail("Joueur introuvable.", 404);
+        store.deletePlayer(req.params.id);
+        return json({ ok: true });
+      },
       // Matt peut téléverser les caricatures de toute l'équipe.
       PATCH: async (req) => {
         if (!isAdmin(req)) return fail("Réservé à Matt.", 401);

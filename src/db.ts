@@ -303,6 +303,44 @@ export class Store {
     return { closed: this.season(open.id)!, opened: this.openSeason() };
   }
 
+  /* ----- Ménage (données de test) ----- */
+
+  /** Supprime un joueur et tout ce qui lui appartient. Ses stickers restent, sans auteur. */
+  deletePlayer(id: string) {
+    this.db.transaction(() => {
+      for (const t of ["answers", "bonuses", "powerups", "power_weeks", "ratings", "submissions"]) this.db.query(`delete from ${t} where player_id = ?`).run(id);
+      this.db.query("update stickers set player_id = null where player_id = ?").run(id);
+      this.db.query("update seasons set champion_id = null where champion_id = ?").run(id);
+      this.db.query("update questions set author_id = null where author_id = ?").run(id);
+      this.db.query("delete from players where id = ?").run(id);
+    })();
+  }
+  games(limit = 40): { id: string; day: string; theme: string; players: number; ended: boolean }[] {
+    return this.db.query(
+      `select g.id, g.day, coalesce(q.theme, '') as theme, g.ended_at is not null as ended,
+              (select count(distinct player_id) from answers a where a.game_id = g.id) as players
+       from games g left join quizzes q on q.id = g.quiz_id order by g.started_at desc limit ?`,
+    ).all(limit).map((r: any) => ({ ...r, ended: !!r.ended }));
+  }
+  /** Supprime une partie : ses points sortent du classement. Les power-ups utilisés restent utilisés. */
+  deleteGame(id: string) {
+    this.db.transaction(() => {
+      this.db.query("delete from answers where game_id = ?").run(id);
+      this.db.query("delete from ratings where game_id = ?").run(id);
+      this.db.query("delete from games where id = ?").run(id);
+    })();
+  }
+  /** Supprime le quiz d'un jour, ses questions et ses parties. */
+  deleteQuiz(day: string) {
+    const q = this.db.query("select id from quizzes where day = ?").get(day) as Row | null;
+    if (!q) return;
+    for (const g of this.db.query("select id from games where quiz_id = ?").all(q.id) as Row[]) this.deleteGame(g.id);
+    this.db.transaction(() => {
+      this.db.query("delete from questions where quiz_id = ?").run(q.id);
+      this.db.query("delete from quizzes where id = ?").run(q.id);
+    })();
+  }
+
   /* ----- Boîte à items (power-ups « Mario Kart ») ----- */
 
   /** Distribue la boîte de la semaine selon le classement : plus t'es bas, mieux t'es armé. */

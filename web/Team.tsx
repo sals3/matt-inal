@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Player, Season } from "../src/shared";
-import { api, copyText, refreshStickers, toast, uploadImage, useStickers } from "./lib";
+import { api, copyText, frDay, refreshStickers, toast, uploadImage, useStickers } from "./lib";
 import { AdminGate, Avatar, Cup } from "./ui";
 
 export function TeamPage() {
@@ -35,6 +35,7 @@ function Team() {
           <Cup seasons={seasons.filter((s) => s.status !== "open")} current={seasons.find((s) => s.status === "open")} />
         </div>
         <SeasonAdmin seasons={seasons} players={players} onChange={load} />
+        <GamesAdmin onChange={load} />
       </div>
     </div>
   );
@@ -68,6 +69,48 @@ function RosterCard({ p, onSaved }: { p: Player; onSaved: () => void }) {
       </div>
       {code ? <button className="rcode small" title="Copier" onClick={() => copyText(code, `Code de ${p.name} copié. Envoie-le-lui en privé.`)}>{code}</button>
         : <button className="linkish" onClick={showCode}>Code de récupération</button>}
+      <ConfirmDelete label="Supprimer" warning={`Supprimer ${p.name} et tous ses points?`} onConfirm={async () => {
+        await api(`/api/players/${p.id}`, { method: "DELETE" });
+        toast(`${p.name} est supprimé`);
+        onSaved();
+      }} />
+    </div>
+  );
+}
+
+/** Un bouton de suppression en deux temps (pas de boîte de dialogue du navigateur). */
+function ConfirmDelete({ label, warning, onConfirm }: { label: string; warning: string; onConfirm: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) return <button className="linkish danger" onClick={() => setAsking(true)}>{label}</button>;
+  return (
+    <div className="confirm-del">
+      <span className="small">{warning}</span>
+      <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+        <button className="btn sm danger" onClick={() => onConfirm().catch((e) => toast((e as Error).message)).finally(() => setAsking(false))}>Oui, supprimer</button>
+        <button className="btn sm ghost" onClick={() => setAsking(false)}>Annuler</button>
+      </span>
+    </div>
+  );
+}
+
+/** Les parties jouées, pour retirer celles de test du classement. */
+function GamesAdmin({ onChange }: { onChange: () => void }) {
+  const [games, setGames] = useState<{ id: string; day: string; theme: string; players: number; ended: boolean }[]>([]);
+  const load = useCallback(() => { api<typeof games>("/api/games").then(setGames).catch((e) => toast(e.message)); }, []);
+  useEffect(load, [load]);
+  return (
+    <div className="card">
+      <h3>Parties jouées <span className="pill">{games.length}</span></h3>
+      <p className="muted small" style={{ marginTop: 6 }}>Supprimer une partie retire ses points du classement, des trophées et du palmarès. Pratique pour les parties de test.</p>
+      <div className="games-list">
+        {games.map((g) => (
+          <div key={g.id} className="game-row">
+            <span><b>{frDay(g.day, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</b> · {g.theme || "Quiz"}<span className="meta">{g.players} joueur{g.players > 1 ? "s" : ""}{g.ended ? "" : " · pas terminée"}</span></span>
+            <ConfirmDelete label="Supprimer" warning="Retirer cette partie et ses points?" onConfirm={async () => { await api(`/api/games/${g.id}`, { method: "DELETE" }); toast("Partie supprimée"); load(); onChange(); }} />
+          </div>
+        ))}
+        {!games.length && <p className="muted small">Aucune partie pour l'instant.</p>}
+      </div>
     </div>
   );
 }

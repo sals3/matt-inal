@@ -511,6 +511,14 @@ button.tile:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tcd);
 button.rcode { cursor: copy; }
 .center-link { text-align: center; margin-top: -8px; }
 
+/* Ménage */
+.linkish.danger, .btn.ghost.danger { color: var(--bad); }
+.btn.danger:not(.ghost) { background: var(--bad); color: #FFF; box-shadow: 0 3px 0 color-mix(in srgb, var(--bad) 60%, #000); }
+.confirm-del { display: grid; gap: 6px; text-align: center; background: var(--bad-soft); border-radius: 10px; padding: 8px; }
+.games-list { display: grid; gap: 8px; margin-top: 12px; }
+.game-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; padding: 8px 10px; background: var(--bg); border-radius: 10px; }
+.game-row .meta { display: block; font-size: 12px; color: var(--ink-2); }
+
 /* Toasts et confettis */
 .toasts { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; gap: 8px; z-index: 40; width: max-content; max-width: calc(100% - 32px); }
 .toast { background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; animation: pop .25s ease-out both; }

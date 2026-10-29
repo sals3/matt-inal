@@ -228,6 +228,18 @@ assert(players.find((p) => p.id === emilie.id)?.champ && !players.find((p) => p.
 const lb = await call<{ cup: Season[]; season: Season }>(`/api/leaderboard`, { headers: A });
 assert(lb.cup.length === 3 && lb.season.num === 4, "la Coupe a 3 plaques et la saison 4 est ouverte");
 
+// Ménage : Matt supprime une partie, un joueur et un quiz de test.
+const games = await call<{ id: string; day: string }[]>("/api/games", { headers: A });
+const g2 = games.find((g) => g.day === day2)!;
+await call(`/api/games/${g2.id}`, { method: "DELETE", headers: A });
+const lb4 = await call<{ standings: unknown[]; games: number }>(`/api/leaderboard`, { headers: A });
+assert(lb4.standings.length === 0 && lb4.games === 0, "partie supprimée : ses points sortent du classement");
 for (const c of [host, ...bots]) c.ws.close();
+await Bun.sleep(300);
+await call(`/api/players/${kevin.id}`, { method: "DELETE", headers: A });
+players = await call<Player[]>("/api/players", { headers: A });
+assert(!players.some((p) => p.id === kevin.id) && (await call<unknown[]>("/api/stickers", { headers: A })).length === 1, "joueur supprimé ; son sticker reste");
+await call(`/api/quizzes/${dayStr()}`, { method: "DELETE", headers: A });
+assert((await call<unknown>(`/api/quizzes/${dayStr()}`, { headers: A })) === null && (await call<unknown[]>("/api/games", { headers: A })).length === 0, "quiz supprimé avec sa partie");
 console.log("🎉 Partie de test complète réussie");
 process.exit(0);

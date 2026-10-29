@@ -75,6 +75,16 @@ function Editor() {
     patch((d) => ({ ...d, questions: d.questions.filter((_, i) => i !== qi) }));
     setQi(Math.max(0, qi - 1));
   };
+  const removeQuiz = async () => {
+    if (!confirm("Supprimer ce quiz, ses questions et ses parties jouées (et leurs points)?")) return;
+    try {
+      await api(`/api/quizzes/${day}`, { method: "DELETE" });
+      setDraft({ theme: defaultTheme(day), status: "draft", questions: [] });
+      setQi(0); setDirty(false);
+      void refreshList();
+      toast("Quiz supprimé");
+    } catch (e) { toast((e as Error).message); }
+  };
   const save = async (status?: QuizStatus) => {
     if (!draft) return;
     setSaving(true);
@@ -194,6 +204,7 @@ function Editor() {
                 <span className="row">
                   <button className="btn" disabled={saving} onClick={() => save()}>Enregistrer</button>
                   <button className="btn primary" disabled={saving || !draft.questions.length} onClick={() => save("ready")}>Marquer prêt</button>
+                  {summary(day) && <button className="btn ghost sm danger" disabled={saving} onClick={removeQuiz}>Supprimer ce quiz</button>}
                 </span>
               </div>
             </>
