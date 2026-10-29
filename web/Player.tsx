@@ -256,8 +256,8 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
 
       {!mine && left > 0 && <PowerBar inv={inv} q={q} used={s.powers[me.id]} answered={answered} onUse={usePower} />}
       <PowerLine s={s} />
-      {wentAway && !done && <p className="robots">🤖 T'as quitté l'onglet : l'équipe le sait{q.data.strict ? ", et en mode cerveau strict, cette question vaut 0." : ". Bonne réponse quand même, mais sans bonus vitesse ni prime cerveau."}</p>}
-      {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur l'onglet jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter l'onglet donne 0." : ""}</p>}
+      {wentAway && !done && <p className="robots">🤖 T'as quitté le quiz : l'équipe le sait{q.data.strict ? ", et en mode cerveau strict, cette question vaut 0." : ". Bonne réponse quand même, mais sans bonus vitesse ni prime cerveau."}</p>}
+      {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur le quiz (cet onglet, cette fenêtre) jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter le quiz donne 0." : ""}</p>}
       {done && (
         <div className="lockmsg">
           {answered ? "Réponse verrouillée." : "Temps écoulé!"} En attente des autres…

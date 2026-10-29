@@ -14,7 +14,10 @@ Le quiz du standup de l'équipe de Matt. Matt prépare ses questions, les partag
 - **Champion en titre** : anneau doré animé et couronne autour de sa photo, partout dans l'app.
 - **Caricatures** : chaque joueur téléverse sa photo dans son profil, ou Matt le fait pour toute l'équipe dans `#/equipe`.
 - **Stickers de l'équipe** : tout le monde ajoute ses stickers (PNG détourés) et les lance à tout le monde ou sur quelqu'un (« Julie → Kevin »). Matt fait le ménage dans `#/equipe`.
-- **Mode 100 % cerveau** : l'IA est permise, mais quitter l'onglet plus de 2 secondes pendant une question s'affiche en direct (🤖), coûte le bonus vitesse et la prime cerveau (+100). En « cerveau strict » (case dans l'éditeur), ça donne 0.
+- **Mode 100 % cerveau** : l'IA est permise, mais quitter le quiz pendant une question, avant d'avoir répondu, s'affiche en direct (🤖) et coûte le bonus vitesse et la prime cerveau (+100). En « cerveau strict » (case dans l'éditeur), ça donne 0.
+  - Compte : changer d'onglet ou réduire le navigateur pendant 2 s, ou passer à une autre fenêtre (ChatGPT, Copilot…) pendant 4 s.
+  - Ne compte pas : sortir la souris de la page, ou un clic rapide dans Teams pour se démuter. Si la question arrive pendant qu'on regarde Teams, on a 8 s pour revenir.
+  - Limite : un cell ou un 2e ordinateur à côté reste invisible pour l'app.
 - **Power-ups « Mario Kart »** : chaque lundi, une boîte à items selon le classement. Plus t'es bas, plus elle est garnie :
   | Rang | Boîte |
   |---|---|

@@ -28,7 +28,7 @@ export class Game {
   deadline = 0;
   hintsShown = 0;
   answers = new Map<string, RawAnswer>();
-  /** Joueurs qui ont quitté l'onglet pendant la question en cours, avant de répondre. */
+  /** Joueurs qui ont quitté le quiz pendant la question en cours, avant de répondre. */
   away = new Set<string>();
   /** Un seul power-up par joueur et par question. */
   powerUse = new Map<string, PowerKind>();
@@ -280,11 +280,11 @@ export class Game {
     this.publish({ t: "react", playerId, e, sticker, target });
   }
 
-  /** Quelqu'un a quitté l'onglet pendant une question : l'équipe le sait tout de suite. */
+  /** Quelqu'un a quitté le quiz pendant une question : l'équipe le sait tout de suite. */
   markAway(player: Player) {
     if (this.phase !== "question" || this.answers.has(player.id) || this.away.has(player.id)) return;
     this.away.add(player.id);
-    this.toast(`🤖 ${player.name} vient de quitter l'onglet… on dit ça de même.`);
+    this.toast(`🤖 ${player.name} vient de quitter le quiz… on dit ça de même.`);
     this.broadcast();
   }
 }

@@ -3,7 +3,7 @@ import { fuzzyMatch, type Question, type Reveal } from "./shared";
 export const BASE = 1000;
 export const SPEED_MAX = 200;
 export const CLOSEST_MIN_FOR_BEST = 500;
-/** Prime « 100 % cerveau » : bonne réponse sans quitter l'onglet. */
+/** Prime « 100 % cerveau » : bonne réponse sans quitter le quiz. */
 export const BRAIN_BONUS = 100;
 export const FREEZE_MS = 10_000;
 export const DOUBLE_PENALTY = 300;
@@ -14,7 +14,7 @@ export interface RawAnswer {
   value: unknown;
   /** Millisecondes écoulées depuis le début de la question. */
   at: number;
-  /** A quitté l'onglet (ChatGPT, Google…) avant de répondre. */
+  /** A quitté le quiz (ChatGPT, Google…) avant de répondre. */
   away?: boolean;
   /** 🍄 Double ou rien. */
   double?: boolean;
@@ -141,9 +141,9 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
     const id = a.playerId;
     if (a.away && q.data.strict) {
       points[id] = 0;
-      detail[id] = "🤖 A quitté l'onglet en mode cerveau strict";
+      detail[id] = "🤖 A quitté le quiz en mode cerveau strict";
     } else if (a.away) {
-      detail[id] += " · 🤖 A quitté l'onglet (pas de bonus vitesse)";
+      detail[id] += " · 🤖 A quitté le quiz (pas de bonus vitesse)";
     } else if ((points[id] ?? 0) > 0) {
       points[id]! += BRAIN_BONUS * mult;
       detail[id] += " · 🧠 Prime cerveau";

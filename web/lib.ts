@@ -162,23 +162,45 @@ export async function uploadImage(file: Blob, max: number, alpha = false): Promi
   return (await api<{ id: string }>("/api/media", { raw: blob })).id;
 }
 
+/** Onglet caché (autre onglet, navigateur réduit, cell verrouillé). */
+export const AWAY_HIDDEN_MS = 2000;
+/** Autre fenêtre au premier plan (ChatGPT, Copilot…). Plus tolérant : un clic dans Teams pour se démuter ne compte pas. */
+export const AWAY_BLUR_MS = 4000;
+/** Si la question arrive pendant qu'on regarde une autre fenêtre (Teams), on laisse le temps de revenir. */
+const AWAY_START_MS = 8000;
+
 /**
- * Mode 100 % cerveau : si l'onglet reste caché 2 secondes pendant une question
- * (ChatGPT, Google…), on le signale une fois. Un coup d'œil à Teams ne compte pas.
+ * Mode 100 % cerveau : on signale une fois par question le joueur qui quitte le quiz
+ * (autre onglet 2 s, ou autre fenêtre 4 s) avant d'avoir répondu.
+ * La souris n'est pas surveillée : la sortir de la page (2e écran, Teams) est normal.
  */
 export function useAwayWatch(active: boolean, onAway: () => void) {
   const fired = useRef(false);
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const onVis = () => {
+    let focused = document.hasFocus();
+    const check = (first = false) => {
       clearTimeout(timer);
-      if (document.visibilityState === "hidden" && !fired.current) {
-        timer = setTimeout(() => { fired.current = true; onAway(); }, 2000);
-      }
+      if (fired.current) return;
+      const hidden = document.visibilityState === "hidden";
+      if (!hidden && focused) return;
+      const delay = hidden ? AWAY_HIDDEN_MS : first ? AWAY_START_MS : AWAY_BLUR_MS;
+      timer = setTimeout(() => { fired.current = true; onAway(); }, delay);
     };
+    const onVis = () => check();
+    const onBlur = () => { focused = false; check(); };
+    const onFocus = () => { focused = true; check(); };
     document.addEventListener("visibilitychange", onVis);
-    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); };
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    check(true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [active, onAway]);
 }
 

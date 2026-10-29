@@ -61,7 +61,7 @@ export function BoardPage() {
             })}
           </div>
         )}
-        <p className="muted small" style={{ marginTop: 12 }}>🧠 % cerveau : la part des réponses données sans quitter l'onglet. L'IA est permise, mais elle coûte le bonus vitesse et la prime cerveau.</p>
+        <p className="muted small" style={{ marginTop: 12 }}>🧠 % cerveau : la part des réponses données sans quitter le quiz. L'IA est permise, mais elle coûte le bonus vitesse et la prime cerveau.</p>
       </div>
       <TrophiesCard />
       <WeekItemsCard />

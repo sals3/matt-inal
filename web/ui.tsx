@@ -71,7 +71,7 @@ export function QHead({ s, right }: { s: PublicState; right?: ReactNode }) {
       <span className="row" style={{ gap: 6 }}>
         <span className="pill">Question {s.qIndex + 1} / {s.qCount} · {TYPE_LABEL[q.type]}</span>
         {q.doublePoints && <span className="pill warn">Points ×2</span>}
-        {q.data.strict && <span className="pill brain" title="Quitter l'onglet pendant la question donne 0 point">🧠 Cerveau strict</span>}
+        {q.data.strict && <span className="pill brain" title="Quitter le quiz pendant la question donne 0 point">🧠 Cerveau strict</span>}
       </span>
       {right}
     </div>
@@ -157,7 +157,7 @@ export function RevealPanel({ s, meId }: { s: PublicState; meId?: string }) {
       {r.author && name(r.author.id) && (
         <p className="author-line">📬 Question de <b>{name(r.author.id)!.name}</b> : {Math.round(r.author.rate * 100)} % ont trouvé. {r.author.bonus ? <>Bien dosée, <b>+{r.author.bonus} pts</b>!</> : "Pas dans la zone 30 à 70 %, pas de bonus."}</p>
       )}
-      {r.away.length > 0 && <p className="robots">🤖 Ont quitté l'onglet : {r.away.map((id) => name(id)?.name).join(", ")}. L'IA est permise, mais le bonus vitesse et la prime cerveau, eux, sont partis.</p>}
+      {r.away.length > 0 && <p className="robots">🤖 Ont quitté le quiz : {r.away.map((id) => name(id)?.name).join(", ")}. L'IA est permise, mais le bonus vitesse et la prime cerveau, eux, sont partis.</p>}
       {r.nobody && <p className="nobody">Personne n'a trouvé : <b>Matt marque un point</b>.</p>}
     </div>
   );
