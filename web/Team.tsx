@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Player, Season } from "../src/shared";
-import { api, refreshStickers, toast, uploadImage, useStickers } from "./lib";
+import { api, copyText, refreshStickers, toast, uploadImage, useStickers } from "./lib";
 import { AdminGate, Avatar, Cup } from "./ui";
 
 export function TeamPage() {
@@ -43,6 +43,10 @@ function Team() {
 function RosterCard({ p, onSaved }: { p: Player; onSaved: () => void }) {
   const [name, setName] = useState(p.name);
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const showCode = async () => {
+    try { setCode((await api<{ code: string }>(`/api/players/${p.id}/recovery`)).code); } catch (e) { toast((e as Error).message); }
+  };
   const save = async (patch: Partial<Player>) => {
     setBusy(true);
     try { await api(`/api/players/${p.id}`, { method: "PATCH", body: { ...p, name, ...patch } }); onSaved(); }
@@ -62,6 +66,8 @@ function RosterCard({ p, onSaved }: { p: Player; onSaved: () => void }) {
         <label className="btn sm">{busy ? "…" : p.avatarId ? "Changer" : "Caricature"}<input type="file" accept="image/png,image/webp,image/jpeg,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} /></label>
         {p.avatarId && <button className="btn sm ghost" onClick={() => save({ avatarId: null })}>Emoji</button>}
       </div>
+      {code ? <button className="rcode small" title="Copier" onClick={() => copyText(code, `Code de ${p.name} copié. Envoie-le-lui en privé.`)}>{code}</button>
+        : <button className="linkish" onClick={showCode}>Code de récupération</button>}
     </div>
   );
 }
@@ -87,6 +93,10 @@ function SeasonAdmin({ seasons, players, onChange }: { seasons: Season[]; player
       </div>
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn sm" onClick={addLegacy}>+ Ancienne saison</button>
+      </div>
+      <div className="close-season soft">
+        <p><b>Boîtes à items.</b> Elles se distribuent chaque lundi selon le classement. Après une fin de saison, tu peux les redistribuer selon le nouveau classement.</p>
+        <button className="btn sm" onClick={async () => { try { await api("/api/powers/redistribute", { method: "POST" }); toast("Boîtes redistribuées"); } catch (e) { toast((e as Error).message); } }}>Redistribuer les boîtes de la semaine</button>
       </div>
       {open && (
         <div className="close-season">

@@ -5,6 +5,9 @@ export const SPEED_MAX = 200;
 export const CLOSEST_MIN_FOR_BEST = 500;
 /** Prime « 100 % cerveau » : bonne réponse sans quitter l'onglet. */
 export const BRAIN_BONUS = 100;
+export const FREEZE_MS = 10_000;
+export const DOUBLE_PENALTY = 300;
+export const AUTHOR_BONUS = 300;
 
 export interface RawAnswer {
   playerId: string;
@@ -13,6 +16,22 @@ export interface RawAnswer {
   at: number;
   /** A quitté l'onglet (ChatGPT, Google…) avant de répondre. */
   away?: boolean;
+  /** 🍄 Double ou rien. */
+  double?: boolean;
+  /** ⏸️ Gel du chrono : le bonus vitesse ne descend pas pendant 10 s. */
+  freeze?: boolean;
+  /** 💙 Touché par la carapace bleue : pas de bonus vitesse. */
+  shelled?: boolean;
+  /** 👑 Couronne lourde : bonus vitesse divisé par deux. */
+  crowned?: boolean;
+}
+
+/** Une question de l'équipe est « bien dosée » si 30 à 70 % des joueurs trouvent. */
+export function authorBonus(points: Record<string, number>): { bonus: number; rate: number } {
+  const vals = Object.values(points);
+  if (vals.length < 2) return { bonus: 0, rate: 0 };
+  const rate = vals.filter((p) => p > 0).length / vals.length;
+  return { bonus: rate >= 0.3 && rate <= 0.7 ? AUTHOR_BONUS : 0, rate };
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -62,7 +81,11 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
   const correct: number[] = [];
   const mult = q.doublePoints ? 2 : 1;
   // L'IA est permise, mais on perd le bonus vitesse en quittant l'onglet.
-  const bonus = (a: RawAnswer) => (q.speedBonus && !a.away ? speedBonus(a.at, limitMs) : 0);
+  const bonus = (a: RawAnswer) => {
+    if (!q.speedBonus || a.away || a.shelled) return 0;
+    const b = speedBonus(a.freeze ? Math.max(0, a.at - FREEZE_MS) : a.at, limitMs);
+    return a.crowned ? Math.round(b / 2) : b;
+  };
   const away = answers.filter((a) => a.away).map((a) => a.playerId);
   const reveal: Reveal = { questionId: q.id, correct, counts, picks, points, detail, nobody: false, away };
 
@@ -124,6 +147,13 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
     } else if ((points[id] ?? 0) > 0) {
       points[id]! += BRAIN_BONUS * mult;
       detail[id] += " · 🧠 Prime cerveau";
+    }
+    if (a.shelled) detail[id] += " · 💙 Touché par la carapace bleue";
+    if (a.freeze) detail[id] += " · ⏸️ Gel du chrono";
+    if (a.crowned && q.speedBonus) detail[id] += " · 👑 Couronne lourde";
+    if (a.double) {
+      if (points[id]! > 0) { points[id]! *= 2; detail[id] += " · 🍄 Double!"; }
+      else { points[id] = -DOUBLE_PENALTY; detail[id] += " · 🍄 Double ou rien… rien"; }
     }
   }
 

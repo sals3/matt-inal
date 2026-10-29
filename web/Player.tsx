@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { type Player, type PublicState } from "../src/shared";
+import { type Player, type PowerKind, type PublicState } from "../src/shared";
+import { ApplauseStars, ItemBoxReveal, ItemsCard, PowerBar, PowerLine, RecoverForm, RecoveryBox, ShellBanner, SubmitQuestion, useInventory } from "./fun";
 import { api, auth, AVATARS, COLORS, confetti, frDay, fmt, ord, sfx, signed, toast, uploadImage, useAwayWatch, useCountdown, useGame } from "./lib";
 import { Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, SHAPE_NAMES, TeaseBar, Timer, Visual } from "./ui";
 
@@ -10,8 +11,10 @@ export function PlayerPage() {
     if (!auth.token) { setChecked(true); return; }
     api<Player>("/api/me").then(setMe).catch((e) => { if (e.status === 401) auth.token = ""; }).finally(() => setChecked(true));
   }, []);
+  const [recovering, setRecovering] = useState(false);
   if (!checked) return <div className="loading">Chargement…</div>;
-  if (!me) return <ProfileForm onDone={setMe} />;
+  if (!me && recovering) return <RecoverForm onDone={setMe} onCancel={() => setRecovering(false)} />;
+  if (!me) return <><ProfileForm onDone={setMe} /><p className="center-link"><button className="linkish" onClick={() => setRecovering(true)}>Déjà dans l'équipe sur un autre appareil? Entre ton code de récupération</button></p></>;
   return <PlayerGame me={me} setMe={setMe} />;
 }
 
@@ -62,6 +65,7 @@ export function ProfileForm({ me, onDone, onCancel }: { me?: Player; onDone: (p:
           <span className="muted small">Une image carrée, visage centré. Les PNG détourés rendent super bien.</span>
         </div>
       ) : <p className="muted small">Tu pourras ajouter ta caricature ensuite, dans ton profil.</p>}
+      {me && <RecoveryBox />}
       <div className="field"><span className="flabel">{avatarId ? "Ton emoji (de secours)" : "Ton avatar"}</span>
         <div className="emoji-grid" role="radiogroup" aria-label="Avatar">
           {AVATARS.map((a) => <button type="button" key={a} role="radio" aria-checked={a === emoji} className="emoji-opt" onClick={() => setEmoji(a)}>{a}</button>)}
@@ -82,8 +86,13 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
   const g = useGame("player");
   const s = g.state;
   const [editing, setEditing] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const tease = (m: { e?: string; sticker?: string; target?: string }) => g.send({ t: "react", ...m });
   const prevPhase = useRef<string>("");
+  // La boîte à items se recharge à chaque question (un item a pu être utilisé).
+  const [inv] = useInventory(`${s?.gameId}-${s?.qIndex}-${s?.phase === "reveal"}`);
+  const [showBox, setShowBox] = useState(false);
+  useEffect(() => { if (inv && !inv.seen && (inv.items.length || inv.tier === "crown")) setShowBox(true); }, [inv?.week, inv?.seen]);
 
   // Sons et confettis aux changements de phase.
   useEffect(() => {
@@ -100,10 +109,10 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
     <div className="player">
       <div className={`stage${s?.question?.type === "music" && (s.phase === "question" || s.phase === "reveal") ? " music" : ""}`}>
         {!s ? <div className="lobby"><p className="muted">Connexion à la partie…</p></div>
-          : s.phase === "idle" ? <Idle me={me} />
+          : s.phase === "idle" ? (proposing ? <SubmitQuestion onClose={() => setProposing(false)} /> : <Idle me={me} onPropose={() => setProposing(true)} />)
           : s.phase === "lobby" ? <Lobby s={s} />
-          : s.phase === "question" ? <QuestionView key={s.question!.id} s={s} me={me} g={g} />
-          : s.phase === "reveal" ? <RevealView s={s} me={me} />
+          : s.phase === "question" ? <QuestionView key={s.question!.id} s={s} me={me} g={g} inv={inv} />
+          : s.phase === "reveal" ? <RevealView s={s} me={me} onRate={(n) => g.send({ t: "rate", stars: n })} />
           : <PodiumView s={s} me={me} />}
         {!g.connected && s && <p className="offline">Connexion perdue. On se reconnecte…</p>}
       </div>
@@ -111,6 +120,7 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
         <div className="card">
           <div className="profile"><Avatar p={me} size="lg" /><div><b style={{ fontSize: 18 }}>{me.name}</b>{me.champ && <span className="champ-tag">👑 Champion en titre</span>}<br /><button className="linkish" onClick={() => setEditing(true)}>Modifier mon profil</button></div></div>
         </div>
+        <ItemsCard inv={inv} crownId={s?.crownId} meId={me.id} onOpen={() => setShowBox(true)} />
         <div className="card"><h3>Charrier l'équipe</h3><TeaseBar send={tease} players={s?.presence ?? []} meId={me.id} /></div>
         <div className="card">
           <h3>Points du jour</h3>
@@ -125,11 +135,12 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
         </div>
       </aside>
       <FloatingReactions onReact={g.onReact} players={s?.players ?? {}} />
+      {showBox && inv && <ItemBoxReveal inv={inv} onClose={() => setShowBox(false)} />}
     </div>
   );
 }
 
-function Idle({ me }: { me: Player }) {
+function Idle({ me, onPropose }: { me: Player; onPropose: () => void }) {
   const [today, setToday] = useState<{ day: string; quiz: { theme: string; count: number; status: string } | null } | null>(null);
   useEffect(() => { api<typeof today>("/api/today").then(setToday).catch(() => {}); }, []);
   return (
@@ -146,7 +157,10 @@ function Idle({ me }: { me: Player }) {
         <div><b>La bonne réponse avant la vitesse</b><span>1 000 pts pour avoir raison, 200 max pour la vitesse.</span></div>
         <div><b>Une nouvelle saison chaque mois</b><span>Le classement repart à zéro le 1er.</span></div>
       </div>
-      <a className="btn" href="#/classement" style={{ alignSelf: "flex-start" }}>Voir le classement</a>
+      <div className="row">
+        <a className="btn" href="#/classement">Voir le classement</a>
+        <button className="btn" onClick={onPropose}>📬 Proposer une question à Matt</button>
+      </div>
     </>
   );
 }
@@ -163,15 +177,19 @@ function Lobby({ s }: { s: PublicState }) {
   );
 }
 
-function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<typeof useGame> }) {
+function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: ReturnType<typeof useGame>; inv: ReturnType<typeof useInventory>[0] }) {
   const q = s.question!;
   const { left, frac } = useCountdown(s, g.offset);
   const answered = s.answered.includes(me.id);
+  const mine = q.authorId === me.id;
   const [pick, setPick] = useState<number | null>(null);
   const [guess, setGuess] = useState(Math.round(((q.data.min ?? 0) + (q.data.max ?? 10)) / 2));
   const [music, setMusic] = useState({ title: "", artist: "", year: "" });
+  const [removed, setRemoved] = useState<number[]>([]);
   const lastSec = useRef(99);
-  const done = answered || left <= 0;
+  const done = answered || left <= 0 || mine;
+  useEffect(() => g.onPower((p) => { if (p.kind === "fifty" && p.removed) setRemoved(p.removed); sfx("lock"); }), [g.onPower]);
+  const usePower = (kind: PowerKind) => g.send({ t: "power", kind });
   const wentAway = s.away.includes(me.id);
   const flagAway = useCallback(() => g.send({ t: "away" }), [g.send]);
   useAwayWatch(!done, flagAway);
@@ -184,7 +202,7 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).matches("input, textarea, select")) return;
       const k = Number(e.key) - 1;
-      if (q.data.choices && k >= 0 && k < q.data.choices.length && !done) { setPick(k); answer(k); }
+      if (q.data.choices && k >= 0 && k < q.data.choices.length && !done && !removed.includes(k)) { setPick(k); answer(k); }
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
@@ -197,11 +215,15 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
   return (
     <>
       <QHead s={s} right={<Timer left={left} frac={frac} />} />
+      <ShellBanner s={s} />
       <Visual q={q} zoom={zoom} blur={blur} tag={q.type === "music" ? "Matt · en direct" : undefined} />
       <h2 className="prompt">{q.prompt}</h2>
-      {tip && <p className="muted small">{tip}</p>}
+      {tip && !mine && <p className="muted small">{tip}</p>}
+      {q.authorId && !mine && s.players[q.authorId] && <p className="small author-line">📬 Question proposée par <b>{s.players[q.authorId]!.name}</b></p>}
 
-      {q.type === "closest" ? (
+      {mine ? (
+        <div className="own-q"><span className="big-emoji">🍿</span><p><b>C'est ta question!</b> Tu ne peux pas y répondre. Si 30 à 70 % de l'équipe trouve, tu gagnes 300 pts. Croise les doigts.</p></div>
+      ) : q.type === "closest" ? (
         <div className="guess">
           <div className="guess-num">{guess}</div>
           <input className="range" type="range" min={q.data.min} max={q.data.max} value={guess} disabled={done} onChange={(e) => setGuess(Number(e.target.value))} aria-label="Ton estimation" />
@@ -225,13 +247,15 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
       ) : (
         <div className={`tiles${done ? " locked" : ""}`}>
           {(q.data.choices ?? []).map((c, k) => (
-            <button key={k} className={`tile t${k}${pick === k ? " picked" : ""}`} disabled={done} onClick={() => { setPick(k); answer(k); }} aria-label={`${SHAPE_NAMES[k]} : ${c}`}>
+            <button key={k} className={`tile t${k}${pick === k ? " picked" : ""}${removed.includes(k) ? " gone" : ""}`} disabled={done || removed.includes(k)} onClick={() => { setPick(k); answer(k); }} aria-label={`${SHAPE_NAMES[k]} : ${c}`}>
               <Shape k={k} /><span>{c}</span><span className="k">{k + 1}</span>
             </button>
           ))}
         </div>
       )}
 
+      {!mine && left > 0 && <PowerBar inv={inv} q={q} used={s.powers[me.id]} answered={answered} onUse={usePower} />}
+      <PowerLine s={s} />
       {wentAway && !done && <p className="robots">🤖 T'as quitté l'onglet : l'équipe le sait{q.data.strict ? ", et en mode cerveau strict, cette question vaut 0." : ". Bonne réponse quand même, mais sans bonus vitesse ni prime cerveau."}</p>}
       {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur l'onglet jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter l'onglet donne 0." : ""}</p>}
       {done && (
@@ -245,12 +269,14 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
   );
 }
 
-function RevealView({ s, me }: { s: PublicState; me: Player }) {
+function RevealView({ s, me, onRate }: { s: PublicState; me: Player; onRate: (n: number) => void }) {
   const r = s.reveal!, q = s.question!;
-  const pts = r.points[me.id];
+  const author = r.author?.id === me.id ? r.author : null;
+  const pts = author ? author.bonus : r.points[me.id];
   const didAnswer = pts !== undefined;
   const ok = (pts ?? 0) > 0;
-  const title = !didAnswer ? "Trop tard!" : q.type === "majority" ? (ok ? "Tu penses comme la gang!" : "Esprit libre!") : q.type === "closest" ? (r.detail[me.id] === "Dans le mille" ? "Dans le mille!" : ok ? "Pas loin!" : "Matt t'a eu.") : ok ? "Bonne réponse!" : "Oups!";
+  const title = author ? (author.bonus ? "Question bien dosée!" : "Pas assez dosée…")
+    : !didAnswer ? "Trop tard!" : q.type === "majority" ? (ok ? "Tu penses comme la gang!" : "Esprit libre!") : q.type === "closest" ? (r.detail[me.id] === "Dans le mille" ? "Dans le mille!" : ok ? "Pas loin!" : "Matt t'a eu.") : ok ? "Bonne réponse!" : "Oups!";
   const last = s.qIndex === s.qCount - 1;
   return (
     <>
@@ -260,9 +286,10 @@ function RevealView({ s, me }: { s: PublicState; me: Player }) {
         <div className="verdict-box">
           <h2 className={`verdict${ok ? " ok" : ""}`}>{title}</h2>
           <div className={`gain${(pts ?? 0) < 0 ? " neg" : !pts ? " zero" : ""}`}>{signed(pts ?? 0)} pts</div>
-          {didAnswer && <p className="muted">{r.detail[me.id]}</p>}
+          {author ? <p className="muted">{Math.round(author.rate * 100)} % de l'équipe a trouvé (il fallait entre 30 et 70 %).</p> : didAnswer && <p className="muted">{r.detail[me.id]}</p>}
         </div>
       </div>
+      {q.type === "music" && <ApplauseStars s={s} onRate={onRate} />}
       <RevealPanel s={s} meId={me.id} />
       <p className="muted small next-row">{last ? "Dernière question! Matt va dévoiler le podium." : "Matt lance la prochaine question quand tout le monde a fini de rire."}</p>
     </>

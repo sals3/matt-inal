@@ -1,6 +1,9 @@
 import type { Store } from "./db";
-import { hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
-import { REACTIONS, type Phase, type Player, type PublicState, type Question, type Quiz, type Reveal, type ServerMsg } from "./shared";
+import { authorBonus, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
+import {
+  dayStr, mondayOf, POWERS, powerFits, REACTIONS,
+  type Phase, type Player, type PowerKind, type PublicState, type Question, type Quiz, type Reveal, type ServerMsg,
+} from "./shared";
 
 /** Délai de grâce après le chrono, pour la latence réseau. */
 const GRACE_MS = 600;
@@ -27,6 +30,12 @@ export class Game {
   answers = new Map<string, RawAnswer>();
   /** Joueurs qui ont quitté l'onglet pendant la question en cours, avant de répondre. */
   away = new Set<string>();
+  /** Un seul power-up par joueur et par question. */
+  powerUse = new Map<string, PowerKind>();
+  shell: { from: string; to: string } | null = null;
+  week = "";
+  crownId: string | null = null;
+  applause: { avg: number; count: number } | null = null;
   reveal: Reveal | null = null;
   totals: Record<string, number> = {};
   participants = new Map<string, Player>();
@@ -58,6 +67,10 @@ export class Game {
       serverNow: Date.now(),
       answered: [...this.answers.keys()],
       away: [...this.away],
+      powers: Object.fromEntries(this.powerUse),
+      shell: this.shell,
+      crownId: this.crownId,
+      applause: this.phase === "reveal" && q?.type === "music" ? this.applause : null,
       presence: [...this.presence.values()].map((p) => p.player),
       reveal: this.phase === "reveal" ? this.reveal : null,
       totals: this.totals,
@@ -102,6 +115,8 @@ export class Game {
     this.clearTimers();
     Object.assign(this, { quiz, phase: "lobby", qIndex: -1, totals: {}, reveal: null, answers: new Map(), startedAt: 0, deadline: 0 });
     this.participants = new Map([...this.presence.values()].map((p) => [p.player.id, p.player]));
+    this.week = mondayOf(dayStr());
+    this.crownId = this.store.crownId(this.week);
     this.gameId = this.store.createGame(quiz.id, quiz.day);
     this.broadcast();
     return null;
@@ -119,17 +134,16 @@ export class Game {
   private startQuestion(i: number) {
     this.clearTimers();
     const q = this.quiz!.questions[i]!;
-    this.qIndex = i;
-    this.phase = "question";
-    this.answers = new Map();
-    this.away = new Set();
-    this.reveal = null;
-    this.hintsShown = 0;
+    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
     this.startedAt = Date.now();
     this.deadline = this.startedAt + q.timeLimit * 1000;
     this.timers.push(setTimeout(() => this.doReveal(), q.timeLimit * 1000 + GRACE_MS));
     if (q.type === "music") {
       hintTimes(q).forEach((t, k) => this.timers.push(setTimeout(() => { this.hintsShown = k + 1; this.broadcast(); }, t)));
+    }
+    if (q.authorId) {
+      const author = this.store.player(q.authorId);
+      if (author) { this.participants.set(author.id, author); this.toast(`📬 Question proposée par ${author.name}. Lui, il regarde les autres suer.`); }
     }
     this.broadcast();
   }
@@ -137,6 +151,7 @@ export class Game {
   answer(player: Player, qid: string, value: unknown): string | null {
     const q = this.question;
     if (this.phase !== "question" || !q || q.id !== qid) return "Trop tard pour cette question.";
+    if (q.authorId === player.id) return "C'est ta question! Tu regardes les autres suer.";
     if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
     const at = Date.now() - this.startedAt;
     if (at > q.timeLimit * 1000 + GRACE_MS) return "Le temps est écoulé.";
@@ -144,9 +159,9 @@ export class Game {
     if (v === undefined) return "Réponse invalide.";
     this.answers.set(player.id, { playerId: player.id, value: v, at, away: this.away.has(player.id) });
     this.participants.set(player.id, player);
-    // Tout le monde a répondu : on révèle sans attendre la fin du chrono.
-    const everyone = [...this.presence.keys()].every((id) => this.answers.has(id));
-    if (everyone && this.presence.size > 0) this.timers.push(setTimeout(() => this.doReveal(), 900));
+    // Tout le monde a répondu (sauf l'auteur de la question) : on révèle sans attendre la fin du chrono.
+    const expected = [...this.presence.keys()].filter((id) => id !== q.authorId);
+    if (expected.length > 0 && expected.every((id) => this.answers.has(id))) this.timers.push(setTimeout(() => this.doReveal(), 900));
     this.broadcast();
     return null;
   }
@@ -155,11 +170,26 @@ export class Game {
     const q = this.question;
     if (this.phase !== "question" || !q || !this.gameId) return "Aucune question en cours.";
     this.clearTimers();
-    const answers = [...this.answers.values()];
-    this.reveal = scoreQuestion(q, answers);
-    for (const [id, p] of Object.entries(this.reveal.points)) this.totals[id] = (this.totals[id] ?? 0) + p;
+    const answers = [...this.answers.values()].map((a) => ({
+      ...a,
+      double: this.powerUse.get(a.playerId) === "double",
+      freeze: this.powerUse.get(a.playerId) === "freeze",
+      shelled: this.shell?.to === a.playerId,
+      crowned: this.crownId === a.playerId,
+    }));
+    const reveal = scoreQuestion(q, answers);
+    if (q.authorId && this.quiz) {
+      const { bonus, rate } = authorBonus(reveal.points);
+      reveal.author = { id: q.authorId, bonus, rate };
+      if (bonus) {
+        this.store.addBonus(q.authorId, this.quiz.day, bonus, "Question bien dosée");
+        this.totals[q.authorId] = (this.totals[q.authorId] ?? 0) + bonus;
+      }
+    }
+    this.reveal = reveal;
+    for (const [id, p] of Object.entries(reveal.points)) this.totals[id] = (this.totals[id] ?? 0) + p;
     for (const id of this.participants.keys()) this.totals[id] ??= 0;
-    this.store.saveAnswers(this.gameId, q.id, answers.map((a) => ({ playerId: a.playerId, value: a.value, ms: a.at, points: this.reveal!.points[a.playerId] ?? 0, away: !!a.away })));
+    this.store.saveAnswers(this.gameId, q.id, answers.map((a) => ({ playerId: a.playerId, value: a.value, ms: a.at, points: reveal.points[a.playerId] ?? 0, away: !!a.away })));
     this.phase = "reveal";
     this.broadcast();
     return null;
@@ -177,8 +207,58 @@ export class Game {
   close(): null {
     this.clearTimers();
     if (this.gameId && this.phase !== "podium" && this.phase !== "idle") this.store.endGame(this.gameId);
-    Object.assign(this, { phase: "idle", gameId: null, quiz: null, qIndex: -1, reveal: null, totals: {}, answers: new Map() });
+    Object.assign(this, { phase: "idle", gameId: null, quiz: null, qIndex: -1, reveal: null, totals: {}, answers: new Map(), powerUse: new Map(), shell: null });
     this.participants = new Map();
+    this.broadcast();
+    return null;
+  }
+
+  /* ----- Power-ups ----- */
+  usePower(player: Player, kind: PowerKind): { error?: string; removed?: number[] } {
+    const q = this.question;
+    if (!POWERS[kind]) return { error: "Power-up inconnu." };
+    if (this.phase !== "question" || !q || !this.gameId) return { error: "Les power-ups s'utilisent pendant une question." };
+    if (q.authorId === player.id) return { error: "Pas de power-up sur ta propre question!" };
+    if (this.powerUse.has(player.id)) return { error: "Un seul power-up par question." };
+    if (kind !== "shell" && this.answers.has(player.id)) return { error: "Trop tard : ta réponse est déjà verrouillée." };
+    if (!powerFits(kind, q)) return { error: `${POWERS[kind].name} ne marche pas sur ce type de question.` };
+
+    let target: Player | null = null;
+    if (kind === "shell") {
+      target = this.store.leaderboard().standings[0]?.player ?? null;
+      if (!target) return { error: "Personne n'est encore premier : rien à viser." };
+      if (target.id === player.id) return { error: "T'es premier : tu peux pas te lancer une carapace à toi-même 😄" };
+      if (this.shell) return { error: "Une carapace vole déjà sur cette question." };
+    }
+    if (!this.store.consumePower(player.id, this.week, kind, this.gameId, q.id, target?.id ?? null)) return { error: `T'as plus de ${POWERS[kind].name} cette semaine.` };
+
+    this.powerUse.set(player.id, kind);
+    this.participants.set(player.id, player);
+    let removed: number[] | undefined;
+    if (kind === "fifty") {
+      removed = (q.data.choices ?? []).map((_, k) => k).filter((k) => k !== q.data.correct).sort(() => Math.random() - 0.5).slice(0, 2).sort();
+      this.toast(`🎯 ${player.name} sort son 50/50.`);
+    } else if (kind === "double") {
+      this.toast(`🍄 ${player.name} joue Double ou rien! Ça passe ou ça casse.`);
+    } else if (kind === "freeze") {
+      this.toast(`⏸️ ${player.name} gèle son chrono.`);
+    } else if (target) {
+      this.shell = { from: player.id, to: target.id };
+      this.participants.set(target.id, target);
+      this.toast(`💙 ${player.name} lance la carapace bleue sur ${target.name}!`);
+    }
+    this.broadcast();
+    return { removed };
+  }
+
+  /* ----- Applaudimètre ----- */
+  rate(player: Player, stars: number): string | null {
+    const q = this.question;
+    if (this.phase !== "reveal" || q?.type !== "music" || !this.gameId) return "L'applaudimètre s'ouvre à la révélation du Mercredi musical.";
+    const n = Math.round(stars);
+    if (n < 1 || n > 5) return "Entre 1 et 5 étoiles.";
+    this.store.rate(this.gameId, q.id, player.id, n);
+    this.applause = this.store.applause(this.gameId, q.id);
     this.broadcast();
     return null;
   }

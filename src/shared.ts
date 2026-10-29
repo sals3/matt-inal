@@ -53,6 +53,85 @@ export interface Question {
   speedBonus: boolean;
   doublePoints: boolean;
   data: QData;
+  /** Proposée par un joueur (boîte à questions) : il ne peut pas y répondre. */
+  authorId?: string | null;
+}
+
+/* ---------- Power-ups « Mario Kart » ---------- */
+
+export type PowerKind = "fifty" | "freeze" | "double" | "shell";
+
+export const POWERS: Record<PowerKind, { emoji: string; name: string; desc: string }> = {
+  fifty: { emoji: "🎯", name: "50/50", desc: "Enlève deux mauvaises réponses." },
+  freeze: { emoji: "⏸️", name: "Gel du chrono", desc: "Ton bonus vitesse reste au maximum pendant 10 secondes." },
+  double: { emoji: "🍄", name: "Double ou rien", desc: "×2 si t'as raison, −300 sinon." },
+  shell: { emoji: "💙", name: "Carapace bleue", desc: "Le premier du classement perd son bonus vitesse pour la question." },
+};
+
+/** Les power-ups qui ont du sens pour chaque type de question. */
+export function powerFits(kind: PowerKind, q: Pick<Question, "type" | "speedBonus" | "data">): boolean {
+  if (kind === "fifty") return ["mc", "zoom", "rebus"].includes(q.type) && (q.data.choices?.length ?? 0) >= 4;
+  if (kind === "freeze") return q.type !== "music" && q.speedBonus;
+  return true;
+}
+
+export type PowerTier = "start" | "crown" | "top" | "middle" | "bottom" | "last";
+
+export const TIERS: Record<PowerTier, { label: string; items: PowerKind[] }> = {
+  start: { label: "Départ de saison", items: ["fifty"] },
+  crown: { label: "👑 Couronne lourde", items: [] },
+  top: { label: "Le peloton de tête", items: ["fifty"] },
+  middle: { label: "Le milieu du peloton", items: ["fifty", "freeze"] },
+  bottom: { label: "La remontée", items: ["fifty", "freeze", "double"] },
+  last: { label: "Lanterne rouge… armée", items: ["fifty", "freeze", "double", "shell"] },
+};
+
+export interface PowerInventory {
+  week: string;
+  tier: PowerTier;
+  rank: number | null;
+  seen: boolean;
+  items: { kind: PowerKind; total: number; left: number }[];
+}
+
+export interface WeekDistribution {
+  week: string;
+  crownId: string | null;
+  rows: { player: Player; tier: PowerTier; rank: number | null; used: PowerKind[] }[];
+}
+
+export interface Trophy {
+  id: string;
+  emoji: string;
+  name: string;
+  desc: string;
+  winners: Player[];
+  value: string;
+}
+
+export interface WeekTrophies {
+  week: string;
+  games: number;
+  trophies: Trophy[];
+}
+
+export interface Performance {
+  questionId: string;
+  day: string;
+  title: string;
+  style: string;
+  avg: number;
+  count: number;
+}
+
+export type SubmissionStatus = "pending" | "accepted" | "rejected";
+
+export interface Submission {
+  id: string;
+  player: Player;
+  question: Question;
+  status: SubmissionStatus;
+  createdAt: number;
 }
 
 export type QuizStatus = "draft" | "ready" | "played";
@@ -86,6 +165,8 @@ export interface Reveal {
   nobody: boolean;
   /** Joueurs qui ont quitté l'onglet avant de répondre (🤖). */
   away: string[];
+  /** Question proposée par un joueur : son bonus si elle est bien dosée (30 à 70 % de bonnes réponses). */
+  author?: { id: string; bonus: number; rate: number } | null;
 }
 
 export type Phase = "idle" | "lobby" | "question" | "reveal" | "podium";
@@ -102,6 +183,14 @@ export interface PublicState {
   serverNow: number;
   answered: string[];
   away: string[];
+  /** Power-ups utilisés à la question en cours, par joueur. */
+  powers: Record<string, PowerKind>;
+  /** Carapace bleue lancée à la question en cours. */
+  shell: { from: string; to: string } | null;
+  /** Porteur de la couronne lourde cette semaine (bonus vitesse divisé par deux). */
+  crownId: string | null;
+  /** Applaudimètre en direct (révélation d'un Mercredi musical). */
+  applause: { avg: number; count: number } | null;
   presence: Player[];
   reveal: Reveal | null;
   totals: Record<string, number>;
@@ -158,11 +247,14 @@ export type ClientMsg =
   | { t: "answer"; qid: string; value: unknown }
   | { t: "react"; e?: string; sticker?: string; target?: string }
   | { t: "away" }
+  | { t: "power"; kind: PowerKind }
+  | { t: "rate"; stars: number }
   | { t: "host"; action: "open" | "next" | "reveal" | "close"; quizId?: string };
 
 export type ServerMsg =
   | { t: "state"; s: PublicState }
   | { t: "toast"; msg: string }
+  | { t: "power"; kind: PowerKind; removed?: number[] }
   | { t: "react"; playerId: string; e?: string; sticker?: string; target?: string }
   | { t: "stickers" }
   | { t: "error"; msg: string };
@@ -235,3 +327,12 @@ export function upcomingWeekdays(count: number, from: Date = new Date()): string
 }
 
 export const weekday = (day: string) => new Date(`${day}T12:00:00Z`).getUTCDay();
+
+export function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Le lundi de la semaine du jour donné : la clé de la boîte à items. */
+export const mondayOf = (day: string) => addDays(day, -((weekday(day) + 6) % 7));

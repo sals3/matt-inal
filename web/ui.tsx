@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { REACTIONS, TYPE_LABEL, type Player, type PublicState, type Question, type Season } from "../src/shared";
+import { POWERS, REACTIONS, TYPE_LABEL, type Player, type PublicState, type Question, type Season } from "../src/shared";
 import { api, auth, fmt, signed, toast, uploadImage, useStickers, useToasts, type ReactFn } from "./lib";
 
 export const SHAPE_NAMES = ["Triangle", "Cercle", "Carré", "Losange"];
@@ -147,9 +147,15 @@ export function RevealPanel({ s, meId }: { s: PublicState; meId?: string }) {
       {q.type !== "music" && !r.nobody && (
         <div className="winners">
           {Object.entries(r.points).filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).map(([id, p]) => (
-            <span key={id} className={`winner${id === meId ? " me" : ""}`}><Avatar p={name(id)} size="sm" />{name(id)?.name}<b className="mono">{signed(p)}</b>{away(id) ? " 🤖" : " 🧠"}</span>
+            <span key={id} className={`winner${id === meId ? " me" : ""}`}><Avatar p={name(id)} size="sm" />{name(id)?.name}<b className="mono">{signed(p)}</b>{away(id) ? " 🤖" : " 🧠"}{s.powers[id] ? ` ${POWERS[s.powers[id]!].emoji}` : ""}</span>
           ))}
         </div>
+      )}
+      {Object.entries(r.points).some(([id, p]) => p < 0 && s.powers[id] === "double") && (
+        <p className="robots">🍄 Double ou rien… rien : {Object.entries(r.points).filter(([id, p]) => p < 0 && s.powers[id] === "double").map(([id]) => name(id)?.name).join(", ")} perd 300 pts.</p>
+      )}
+      {r.author && name(r.author.id) && (
+        <p className="author-line">📬 Question de <b>{name(r.author.id)!.name}</b> : {Math.round(r.author.rate * 100)} % ont trouvé. {r.author.bonus ? <>Bien dosée, <b>+{r.author.bonus} pts</b>!</> : "Pas dans la zone 30 à 70 %, pas de bonus."}</p>
       )}
       {r.away.length > 0 && <p className="robots">🤖 Ont quitté l'onglet : {r.away.map((id) => name(id)?.name).join(", ")}. L'IA est permise, mais le bonus vitesse et la prime cerveau, eux, sont partis.</p>}
       {r.nobody && <p className="nobody">Personne n'a trouvé : <b>Matt marque un point</b>.</p>}

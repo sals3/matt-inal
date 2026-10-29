@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { dayStr, type Player, type QuizSummary } from "../src/shared";
 import { api, confetti, frDay, sfx, toast, useCountdown, useGame } from "./lib";
+import { ApplauseMeter, PowerLine, ShellBanner } from "./fun";
 import { AdminGate, Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, Timer, Visual } from "./ui";
 
 export function HostPage() {
@@ -83,6 +84,7 @@ function Host() {
             <>
               <QHead s={s} right={<span className="eyebrow">Réponse révélée</span>} />
               <div className="reveal-top"><Visual q={s.question!} small /><h2 className="prompt">{s.question!.prompt}</h2></div>
+              {s.question!.type === "music" && <ApplauseMeter s={s} />}
               <RevealPanel s={s} />
             </>
           )
@@ -128,8 +130,11 @@ function QuestionScreen({ s, offset }: { s: NonNullable<ReturnType<typeof useGam
   return (
     <>
       <QHead s={s} right={<Timer left={left} frac={frac} />} />
+      <ShellBanner s={s} />
       <Visual q={q} zoom={q.type === "zoom" ? 1 + 6 * frac : 1} blur={q.type === "zoom" ? 7 * frac : 0} tag={q.type === "music" ? "Matt · en direct" : undefined} />
       <h2 className="prompt big-prompt">{q.prompt}</h2>
+      {q.authorId && s.players[q.authorId] && <p className="author-line">📬 Question proposée par <b>{s.players[q.authorId]!.name}</b></p>}
+      <PowerLine s={s} />
       {q.type === "music" ? (
         <div className="hints">
           {[0, 1, 2].map((i) => q.data.hints?.[i]

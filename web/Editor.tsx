@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from "react";
 import { TYPES, TYPE_LABEL, upcomingWeekdays, weekday, type QType, type Question, type Quiz, type QuizStatus, type QuizSummary } from "../src/shared";
 import { api, frDay, resizeImage, toast } from "./lib";
+import { SubmissionInbox } from "./fun";
 import { AdminGate, Shape, Visual } from "./ui";
 
 export function EditorPage() {
@@ -27,7 +28,7 @@ function blankQuestion(type: QType, day: string): Question {
 function retype(q: Question, type: QType, day: string): Question {
   const b = blankQuestion(type, day);
   const keepChoices = q.data.choices && b.data.choices && type !== "tf" && q.type !== "tf";
-  return { ...b, id: q.id, prompt: q.prompt || b.prompt, emoji: q.emoji, imageId: q.imageId, data: keepChoices ? { ...b.data, choices: [...q.data.choices!] } : b.data };
+  return { ...b, id: q.id, prompt: q.prompt || b.prompt, emoji: q.emoji, imageId: q.imageId, authorId: q.authorId ?? null, data: keepChoices ? { ...b.data, choices: [...q.data.choices!] } : b.data };
 }
 
 function Editor() {
@@ -145,7 +146,7 @@ function Editor() {
           {!draft ? <p className="muted">Chargement…</p> : (
             <>
               <div className="qtabs" role="group" aria-label="Questions du jour">
-                {draft.questions.map((x, i) => <button key={x.id} className="qtab" aria-pressed={i === qi} onClick={() => setQi(i)}>Q{i + 1}</button>)}
+                {draft.questions.map((x, i) => <button key={x.id} className="qtab" aria-pressed={i === qi} onClick={() => setQi(i)} title={x.authorId ? "Proposée par l'équipe" : undefined}>Q{i + 1}{x.authorId ? " 📬" : ""}</button>)}
                 <button className="qtab add" onClick={addQuestion}>+ Ajouter</button>
               </div>
               {!q ? (
@@ -202,6 +203,7 @@ function Editor() {
 
       <div className="col col-3">
         <div className="card"><h3>Aperçu joueur <span className="pill">en direct</span></h3><div className="phone">{q ? <Preview q={q} /> : <p className="muted small" style={{ textAlign: "center", padding: "40px 0" }}>Ajoute une question pour voir l'aperçu.</p>}</div></div>
+        <SubmissionInbox onAdd={(nq) => { if (!draft) return; patch((d) => ({ ...d, questions: [...d.questions, nq] })); setQi(draft.questions.length); }} />
         <div className="card tips"><h3>Trucs de Matt</h3>
           <ul>
             <li>Une capture d'écran se colle directement avec Ctrl+V.</li>

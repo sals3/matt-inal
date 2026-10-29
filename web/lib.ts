@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ClientMsg, PublicState, ServerMsg, Sticker } from "../src/shared";
+import type { ClientMsg, PowerKind, PublicState, ServerMsg, Sticker } from "../src/shared";
 
 /* ---------- Jetons (joueur et Matt) ---------- */
 const ls = {
@@ -58,12 +58,14 @@ export function useStickers() {
 /* ---------- Partie en direct (WebSocket) ---------- */
 export type ReactEvent = { playerId: string; e?: string; sticker?: string; target?: string };
 export type ReactFn = (r: ReactEvent) => void;
+export type PowerFn = (p: { kind: PowerKind; removed?: number[] }) => void;
 export function useGame(role: "player" | "host") {
   const [state, setState] = useState<PublicState | null>(null);
   const [connected, setConnected] = useState(false);
   const offset = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reactSubs = useRef(new Set<ReactFn>());
+  const powerSubs = useRef(new Set<PowerFn>());
 
   useEffect(() => {
     let stopped = false;
@@ -80,6 +82,7 @@ export function useGame(role: "player" | "host") {
         else if (m.t === "toast" || m.t === "error") toast(m.msg);
         else if (m.t === "react") reactSubs.current.forEach((f) => f(m));
         else if (m.t === "stickers") void refreshStickers();
+        else if (m.t === "power") powerSubs.current.forEach((f) => f(m));
       };
       ws.onclose = () => {
         setConnected(false);
@@ -96,7 +99,8 @@ export function useGame(role: "player" | "host") {
     else toast("Connexion perdue. On se reconnecte…");
   }, []);
   const onReact = useCallback((f: ReactFn) => { reactSubs.current.add(f); return () => { reactSubs.current.delete(f); }; }, []);
-  return { state, connected, send, offset, onReact };
+  const onPower = useCallback((f: PowerFn) => { powerSubs.current.add(f); return () => { powerSubs.current.delete(f); }; }, []);
+  return { state, connected, send, offset, onReact, onPower };
 }
 
 export function useNow(intervalMs = 100) {
@@ -112,6 +116,11 @@ export function useCountdown(s: PublicState | null, offset: { current: number })
   const total = Math.max(1, s.deadline - s.startedAt);
   const left = Math.max(0, s.deadline - now);
   return { left, frac: left / total };
+}
+
+export async function copyText(text: string, done = "Copié!") {
+  try { await navigator.clipboard.writeText(text); toast(done); }
+  catch { toast("Copie impossible ici : sélectionne le texte et copie-le."); }
 }
 
 /* ---------- Formatage ---------- */

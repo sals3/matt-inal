@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Leaderboard } from "../src/shared";
 import { api, auth, fmt, frDay } from "./lib";
+import { PalmaresCard, TrophiesCard, WeekItemsCard } from "./fun";
 import { Avatar, Cup } from "./ui";
 
 export function BoardPage() {
@@ -24,6 +25,7 @@ export function BoardPage() {
 
   return (
     <div className="board">
+      <div className="col">
       <div className="card">
         <div className="board-head">
           <div>
@@ -61,6 +63,9 @@ export function BoardPage() {
         )}
         <p className="muted small" style={{ marginTop: 12 }}>🧠 % cerveau : la part des réponses données sans quitter l'onglet. L'IA est permise, mais elle coûte le bonus vitesse et la prime cerveau.</p>
       </div>
+      <TrophiesCard />
+      <WeekItemsCard />
+      </div>
 
       <div className="col">
         <div className="card cup-card">
@@ -72,6 +77,7 @@ export function BoardPage() {
             <div className="hall">{lb.lastPodium.entries.map((e, i) => <div key={e.player.id}><span className="row" style={{ gap: 8 }}><b className="mono">{i + 1}</b><Avatar p={e.player} size="sm" />{e.player.name}</span><span className="mono">{fmt(e.points)}</span></div>)}</div>
           </div>
         )}
+        <PalmaresCard />
         <div className="card"><h3>Matt contre l'équipe</h3>
           <div className="vs">
             <div><div className="n matt-n">{lb.mattVsTeam.matt}</div><div className="lbl">Matt</div></div>

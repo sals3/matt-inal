@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { closestStep, hintsAt, scoreQuestion, speedBonus, validAnswer } from "./scoring";
-import { fuzzyMatch, upcomingWeekdays, type Question } from "./shared";
+import { authorBonus, closestStep, hintsAt, scoreQuestion, speedBonus, validAnswer } from "./scoring";
+import { fuzzyMatch, mondayOf, upcomingWeekdays, type Question } from "./shared";
 
 const q = (over: Partial<Question>): Question => ({
   id: "q1", type: "mc", prompt: "?", emoji: "", imageId: null, timeLimit: 20,
@@ -121,6 +121,43 @@ describe("mode 100 % cerveau", () => {
     const r = scoreQuestion(q({ data: { choices: ["a", "b"], correct: 1, strict: true } }), [{ playerId: "robot", value: 1, at: 0, away: true }]);
     expect(r.points.robot).toBe(0);
     expect(r.nobody).toBe(true);
+  });
+});
+
+describe("power-ups", () => {
+  test("🍄 double ou rien : ×2 si bonne réponse, −300 sinon", () => {
+    const r = scoreQuestion(q({ speedBonus: false }), [
+      { playerId: "ok", value: 1, at: 0, double: true },
+      { playerId: "ko", value: 0, at: 0, double: true },
+    ]);
+    expect(r.points).toEqual({ ok: 2200, ko: -300 });
+  });
+  test("⏸️ gel : le bonus vitesse reste au maximum pendant 10 s", () => {
+    const r = scoreQuestion(q({}), [
+      { playerId: "gel", value: 1, at: 10_000, freeze: true },
+      { playerId: "normal", value: 1, at: 10_000 },
+    ]);
+    expect(r.points).toEqual({ gel: 1300, normal: 1200 });
+  });
+  test("💙 carapace : plus de bonus vitesse ; 👑 couronne : bonus divisé par deux", () => {
+    const r = scoreQuestion(q({}), [
+      { playerId: "touche", value: 1, at: 0, shelled: true },
+      { playerId: "roi", value: 1, at: 0, crowned: true },
+    ]);
+    expect(r.points).toEqual({ touche: 1100, roi: 1200 });
+  });
+  test("question de l'équipe bien dosée : 300 pts à l'auteur", () => {
+    expect(authorBonus({ a: 1000, b: 0, c: 1000, d: 0 })).toEqual({ bonus: 300, rate: 0.5 });
+    expect(authorBonus({ a: 1000, b: 1000, c: 1000 }).bonus).toBe(0);
+    expect(authorBonus({ a: 0 }).bonus).toBe(0);
+  });
+});
+
+describe("semaines", () => {
+  test("le lundi de la semaine", () => {
+    expect(mondayOf("2026-10-29")).toBe("2026-10-26");
+    expect(mondayOf("2026-10-26")).toBe("2026-10-26");
+    expect(mondayOf("2026-11-01")).toBe("2026-10-26");
   });
 });
 

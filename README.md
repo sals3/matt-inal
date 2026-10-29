@@ -15,6 +15,20 @@ Le quiz du standup de l'équipe de Matt. Matt prépare ses questions, les partag
 - **Caricatures** : chaque joueur téléverse sa photo dans son profil, ou Matt le fait pour toute l'équipe dans `#/equipe`.
 - **Stickers de l'équipe** : tout le monde ajoute ses stickers (PNG détourés) et les lance à tout le monde ou sur quelqu'un (« Julie → Kevin »). Matt fait le ménage dans `#/equipe`.
 - **Mode 100 % cerveau** : l'IA est permise, mais quitter l'onglet plus de 2 secondes pendant une question s'affiche en direct (🤖), coûte le bonus vitesse et la prime cerveau (+100). En « cerveau strict » (case dans l'éditeur), ça donne 0.
+- **Power-ups « Mario Kart »** : chaque lundi, une boîte à items selon le classement. Plus t'es bas, plus elle est garnie :
+  | Rang | Boîte |
+  |---|---|
+  | 1er | 👑 Couronne lourde : bonus vitesse divisé par deux toute la semaine |
+  | Tiers du haut | 🎯 50/50 |
+  | Milieu | 🎯 50/50, ⏸️ Gel du chrono (le bonus vitesse ne baisse pas pendant 10 s) |
+  | Tiers du bas | + 🍄 Double ou rien (×2 si bonne réponse, −300 sinon) |
+  | Dernier | + 💙 Carapace bleue : le premier perd son bonus vitesse pour la question |
+
+  Un seul power-up par question, annoncé en direct à toute l'équipe. Matt peut redistribuer les boîtes dans `#/equipe` (après une fin de saison, par exemple).
+- **Boîte à questions** : n'importe qui propose une question ; Matt l'ajoute à un quiz depuis l'éditeur. L'auteur ne peut pas y répondre, mais gagne 300 pts si 30 à 70 % de l'équipe trouve.
+- **Trophées de la semaine** : ⚡ Le Flash, 🥈 Le Roi du presque, 🎯 Le Métronome, 🧠 Le Cerveau, 🚀 La Remontée, 💙 Le Saboteur, 🏮 La Lanterne rouge.
+- **Applaudimètre** : après chaque Mercredi musical, l'équipe note Matt sur 5 étoiles ; ses meilleures performances entrent dans son palmarès.
+- **Code de récupération** : trois mots et un nombre (« tuque-bleuet-castor-42 ») dans le profil, pour se reconnecter sur un autre appareil. Matt peut le retrouver dans `#/equipe`.
 
 ## Pile technique (légère et un brin expérimentale)
 
@@ -55,11 +69,7 @@ Tout supprimer : `az group delete -n rg-matt-inal --subscription "Visual Studio 
 
 ## Pour la suite (V2)
 
-- Power-ups « Mario Kart » (50/50, Double ou rien, Gel du chrono, carapace bleue pour le dernier)
-- Boîte à questions de l'équipe
 - Idées de questions générées par l'IA selon un thème
-- Trophées hebdomadaires (Le Flash, La Remontée, Le Roi du presque…)
-- Applaudimètre et palmarès des performances de Matt au Mercredi musical
 - Connexion avec le compte Microsoft (demande une inscription d'app par l'IT)
 
 > Le test de bout en bout (`scripts/smoke.ts`) termine la saison en cours : il refuse de tourner ailleurs qu'en local.

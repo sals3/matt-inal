@@ -2,7 +2,7 @@ import type { ServerWebSocket } from "bun";
 import index from "../web/index.html";
 import { openStore } from "./db";
 import { Game } from "./game";
-import { dayStr, TYPES, type ClientMsg, type Player, type Question, type QuizStatus, type ServerMsg } from "./shared";
+import { addDays, dayStr, mondayOf, TYPES, type ClientMsg, type Player, type PowerKind, type Question, type QuizStatus, type ServerMsg } from "./shared";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const TEAM_CODE = (process.env.TEAM_CODE ?? "MATIN").trim().toUpperCase();
@@ -75,6 +75,7 @@ function cleanQuestion(raw: any): Question | null {
     speedBonus: raw.speedBonus !== false,
     doublePoints: !!raw.doublePoints,
     data,
+    authorId: linkedPlayer(raw.authorId),
   };
 }
 
@@ -104,6 +105,78 @@ server = Bun.serve<WsData, any>({
         const updated = store.updatePlayer(me.id, p)!;
         game.rename(updated);
         return json(updated);
+      },
+    },
+
+    "/api/me/recovery": (req) => {
+      const me = playerOf(req);
+      return me ? json({ code: store.recoveryOf(me.id) }) : fail("Non connecté.", 401);
+    },
+    "/api/recover": {
+      POST: async (req) => {
+        const b = await body<{ code: string }>(req);
+        const r = store.recover(clean(b.code, 80));
+        if (!r) { await sleep(500); return fail("Code de récupération introuvable. Vérifie l'orthographe, ou demande-le à Matt."); }
+        return json(r);
+      },
+    },
+
+    "/api/powers": (req) => {
+      const me = playerOf(req);
+      return me ? json(store.inventory(me.id, mondayOf(dayStr()))) : fail("Non connecté.", 401);
+    },
+    "/api/powers/seen": {
+      POST: (req) => {
+        const me = playerOf(req);
+        if (!me) return fail("Non connecté.", 401);
+        store.markSeen(me.id, mondayOf(dayStr()));
+        return json({ ok: true });
+      },
+    },
+    "/api/powers/redistribute": {
+      POST: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        if (game.phase !== "idle") return fail("Attends la fin de la partie en cours.");
+        store.redistributeWeek(mondayOf(dayStr()));
+        game.toast("🎁 Matt vient de redistribuer les boîtes à items de la semaine!");
+        return json(store.weekDistribution(mondayOf(dayStr())));
+      },
+    },
+    "/api/powers/week": (req) => (playerOf(req) || isAdmin(req) ? json(store.weekDistribution(mondayOf(dayStr()))) : fail("Non connecté.", 401)),
+    "/api/trophies": (req) => {
+      if (!playerOf(req) && !isAdmin(req)) return fail("Non connecté.", 401);
+      const week = mondayOf(dayStr());
+      return json({ current: store.trophies(week), previous: store.trophies(addDays(week, -7)) });
+    },
+    "/api/palmares": (req) => (playerOf(req) || isAdmin(req) ? json(store.palmares()) : fail("Non connecté.", 401)),
+
+    "/api/submissions": {
+      GET: (req) => (isAdmin(req) ? json(store.submissions({ status: "pending" })) : fail("Réservé à Matt.", 401)),
+      POST: async (req) => {
+        const me = playerOf(req);
+        if (!me) return fail("Non connecté.", 401);
+        const b = await body<{ question: unknown }>(req);
+        const q = cleanQuestion(b.question);
+        if (!q || q.type === "music") return fail("Question invalide.");
+        if (!q.prompt) return fail("Écris ta question.");
+        if (q.data.choices && q.data.choices.filter(Boolean).length < 2) return fail("Il faut au moins deux réponses.");
+        if (store.submissions({ playerId: me.id, status: "pending" }).length >= 10) return fail("T'as déjà 10 questions en attente. Laisse Matt souffler!");
+        store.addSubmission(me.id, { ...q, id: "", authorId: me.id });
+        game.toast(`📬 ${me.name} a glissé une question dans la boîte de Matt.`);
+        return json({ ok: true });
+      },
+    },
+    "/api/submissions/mine": (req) => {
+      const me = playerOf(req);
+      return me ? json(store.submissions({ playerId: me.id })) : fail("Non connecté.", 401);
+    },
+    "/api/submissions/:id": {
+      PATCH: async (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        const b = await body<{ status: string }>(req);
+        if (b.status !== "accepted" && b.status !== "rejected") return fail("Statut invalide.");
+        const s = store.decideSubmission(req.params.id, b.status);
+        return s ? json(s) : fail("Question introuvable.", 404);
       },
     },
 
@@ -168,6 +241,7 @@ server = Bun.serve<WsData, any>({
       return json(store.leaderboard(new URL(req.url).searchParams.get("season")));
     },
     "/api/players": (req) => (isAdmin(req) ? json(store.players()) : fail("Réservé à Matt.", 401)),
+    "/api/players/:id/recovery": (req) => (isAdmin(req) ? json({ code: store.recoveryOf(req.params.id) }) : fail("Réservé à Matt.", 401)),
     "/api/players/:id": {
       // Matt peut téléverser les caricatures de toute l'équipe.
       PATCH: async (req) => {
@@ -287,6 +361,13 @@ server = Bun.serve<WsData, any>({
       if (msg.t === "answer" && me) reply(game.answer(me, String(msg.qid), msg.value));
       else if (msg.t === "react" && me) game.react(me.id, msg);
       else if (msg.t === "away" && me) game.markAway(me);
+      else if (msg.t === "power" && me) {
+        const kind = String(msg.kind) as PowerKind;
+        const r = game.usePower(me, kind);
+        if (r.error) reply(r.error);
+        else ws.send(JSON.stringify({ t: "power", kind, removed: r.removed } satisfies ServerMsg));
+      }
+      else if (msg.t === "rate" && me) reply(game.rate(me, Number(msg.stars)));
       else if (msg.t === "host") {
         if (!ws.data.isAdmin) return reply("Réservé à Matt.");
         if (msg.action === "open") reply(game.open(String(msg.quizId ?? "")));
