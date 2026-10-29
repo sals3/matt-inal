@@ -5,6 +5,7 @@ import { EditorPage } from "./Editor";
 import { HostPage } from "./Host";
 import { isSoundOn, setSound } from "./lib";
 import { PlayerPage } from "./Player";
+import { TeamPage } from "./Team";
 import { Toasts } from "./ui";
 
 const ROUTES = {
@@ -12,6 +13,7 @@ const ROUTES = {
   "#/classement": { label: "Classement", page: BoardPage },
   "#/matt": { label: "Préparer", page: EditorPage, matt: true },
   "#/animer": { label: "Animer", page: HostPage, matt: true },
+  "#/equipe": { label: "Équipe", page: TeamPage, matt: true },
 } as const;
 type Route = keyof typeof ROUTES;
 

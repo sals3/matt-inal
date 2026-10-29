@@ -18,6 +18,10 @@ export interface Player {
   name: string;
   emoji: string;
   color: string;
+  /** Photo ou caricature téléversée (sinon on affiche l'emoji). */
+  avatarId?: string | null;
+  /** Champion en titre : gagnant de la dernière saison gravée sur la Coupe. */
+  champ?: boolean;
 }
 
 /** Données propres à chaque type de question (forme plate pour rester simple). */
@@ -35,6 +39,8 @@ export interface QData {
   mode?: "live" | "rec";
   style?: string;
   audioId?: string | null;
+  /** Mode cerveau strict : quitter l'onglet pendant la question donne 0 point. */
+  strict?: boolean;
 }
 
 export interface Question {
@@ -78,6 +84,8 @@ export interface Reveal {
   points: Record<string, number>;
   detail: Record<string, string>;
   nobody: boolean;
+  /** Joueurs qui ont quitté l'onglet avant de répondre (🤖). */
+  away: string[];
 }
 
 export type Phase = "idle" | "lobby" | "question" | "reveal" | "podium";
@@ -93,6 +101,7 @@ export interface PublicState {
   deadline: number;
   serverNow: number;
   answered: string[];
+  away: string[];
   presence: Player[];
   reveal: Reveal | null;
   totals: Record<string, number>;
@@ -107,26 +116,55 @@ export interface Standing {
   rank: number;
   prevRank: number | null;
   lastGame: number;
+  /** Part des réponses données sans quitter l'onglet (null si aucune réponse). */
+  brainPct: number | null;
+}
+
+export type SeasonStatus = "open" | "closed" | "legacy";
+
+export interface Season {
+  id: string;
+  num: number;
+  name: string;
+  startDay: string | null;
+  endDay: string | null;
+  status: SeasonStatus;
+  championId: string | null;
+  championName: string;
+  championPoints: number | null;
+  /** Le joueur lié au champion, s'il a un compte (pour sa photo). */
+  champion?: Player | null;
 }
 
 export interface Leaderboard {
-  month: string;
+  season: Season;
+  seasons: Season[];
   standings: Standing[];
   mattVsTeam: { matt: number; team: number };
   games: number;
   lastPodium: { day: string; entries: { player: Player; points: number }[] } | null;
-  hall: { month: string; player: Player; points: number }[];
+  /** Les plaques de la Coupe : saisons terminées, dans l'ordre. */
+  cup: Season[];
+}
+
+export interface Sticker {
+  id: string;
+  mediaId: string;
+  name: string;
+  playerId: string | null;
 }
 
 export type ClientMsg =
   | { t: "answer"; qid: string; value: unknown }
-  | { t: "react"; e: string }
+  | { t: "react"; e?: string; sticker?: string; target?: string }
+  | { t: "away" }
   | { t: "host"; action: "open" | "next" | "reveal" | "close"; quizId?: string };
 
 export type ServerMsg =
   | { t: "state"; s: PublicState }
   | { t: "toast"; msg: string }
-  | { t: "react"; playerId: string; e: string }
+  | { t: "react"; playerId: string; e?: string; sticker?: string; target?: string }
+  | { t: "stickers" }
   | { t: "error"; msg: string };
 
 export const REACTIONS = ["😂", "🔥", "😱", "👏", "☕", "🎉"];

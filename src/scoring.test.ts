@@ -21,14 +21,14 @@ describe("choix multiple", () => {
       { playerId: "a", value: 1, at: 0 },
       { playerId: "b", value: 2, at: 0 },
     ]);
-    expect(r.points).toEqual({ a: 1200, b: 0 });
+    expect(r.points).toEqual({ a: 1300, b: 0 });
     expect(r.counts).toEqual([0, 1, 1, 0]);
     expect(r.correct).toEqual([1]);
     expect(r.nobody).toBe(false);
   });
   test("points doubles", () => {
     const r = scoreQuestion(q({ doublePoints: true, speedBonus: false }), [{ playerId: "a", value: 1, at: 5000 }]);
-    expect(r.points.a).toBe(2000);
+    expect(r.points.a).toBe(2200);
   });
   test("personne ne trouve : Matt marque", () => {
     const r = scoreQuestion(q({}), [{ playerId: "a", value: 0, at: 0 }]);
@@ -46,7 +46,7 @@ describe("majorité l'emporte", () => {
       { playerId: "e", value: 1, at: 20000 },
     ]);
     expect(r.correct).toEqual([0, 1]);
-    expect(r.points).toEqual({ a: 1000, b: 1000, c: 0, d: 1000, e: 1000 });
+    expect(r.points).toEqual({ a: 1100, b: 1100, c: 0, d: 1100, e: 1100 });
   });
 });
 
@@ -59,7 +59,7 @@ describe("le plus proche", () => {
       { playerId: "deux", value: 1, at: 0 },
       { playerId: "loin", value: 8, at: 0 },
     ]);
-    expect(r.points).toEqual({ exact: 1000, un: 600, deux: 300, loin: 0 });
+    expect(r.points).toEqual({ exact: 1100, un: 700, deux: 400, loin: 0 });
     expect(r.answer).toBe(3);
   });
   test("si personne n'est exact, le plus proche reçoit au moins 500", () => {
@@ -67,7 +67,7 @@ describe("le plus proche", () => {
       { playerId: "a", value: 160, at: 0 },
       { playerId: "b", value: 250, at: 0 },
     ]);
-    expect(r.points.a).toBe(500);
+    expect(r.points.a).toBe(600);
     expect(r.points.b).toBe(0);
   });
   test("tolérance proportionnelle à l'étendue", () => {
@@ -95,15 +95,32 @@ describe("mercredi musical", () => {
       { playerId: "tout", value: { title: "Hymne à la joie", artist: "Beethoven", year: 1830 }, at: 1000 },
       { playerId: "titre", value: { title: "ode a la joie", artist: "", year: null }, at: 1000 },
     ]);
-    expect(r.points.tout).toBe(1200);
-    expect(r.points.titre).toBe(700);
+    expect(r.points.tout).toBe(1300);
+    expect(r.points.titre).toBe(800);
   });
   test("chaque indice débloqué enlève 150 pts", () => {
     expect(hintsAt(mq, 14000)).toBe(0);
     expect(hintsAt(mq, 15000)).toBe(1);
     expect(hintsAt(mq, 46000)).toBe(3);
     const r = scoreQuestion(mq, [{ playerId: "a", value: { title: "Ode à la joie", artist: "Beethoven", year: null }, at: 31000 }]);
-    expect(r.points.a).toBe(700);
+    expect(r.points.a).toBe(800);
+  });
+});
+
+describe("mode 100 % cerveau", () => {
+  test("quitter l'onglet : pas de bonus vitesse ni de prime, mais la bonne réponse compte", () => {
+    const r = scoreQuestion(q({}), [
+      { playerId: "cerveau", value: 1, at: 0 },
+      { playerId: "robot", value: 1, at: 0, away: true },
+    ]);
+    expect(r.points).toEqual({ cerveau: 1300, robot: 1000 });
+    expect(r.away).toEqual(["robot"]);
+    expect(r.detail.robot).toContain("🤖");
+  });
+  test("mode strict : quitter l'onglet donne 0", () => {
+    const r = scoreQuestion(q({ data: { choices: ["a", "b"], correct: 1, strict: true } }), [{ playerId: "robot", value: 1, at: 0, away: true }]);
+    expect(r.points.robot).toBe(0);
+    expect(r.nobody).toBe(true);
   });
 });
 

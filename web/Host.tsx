@@ -144,7 +144,8 @@ function QuestionScreen({ s, offset }: { s: NonNullable<ReturnType<typeof useGam
       {q.type === "music" && q.data.mode === "rec" && q.data.audioId && <audio className="audio" controls src={`/media/${q.data.audioId}`} />}
       <div className="answered">
         <span className="muted small">{s.answered.length} / {s.presence.length} ont répondu</span>
-        <span className="row" style={{ gap: 6 }}>{s.answered.map((id) => <Avatar key={id} p={s.players[id]} size="sm" />)}</span>
+        <span className="row" style={{ gap: 6 }}>{s.answered.map((id) => <Avatar key={id} p={s.players[id]} size="sm" away={s.away.includes(id)} />)}</span>
+        {s.away.length > 0 && <span className="robots inline">🤖 Partis voir ailleurs : {s.away.map((id) => s.players[id]?.name).join(", ")}</span>}
       </div>
     </>
   );

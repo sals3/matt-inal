@@ -25,6 +25,8 @@ export class Game {
   deadline = 0;
   hintsShown = 0;
   answers = new Map<string, RawAnswer>();
+  /** Joueurs qui ont quitté l'onglet pendant la question en cours, avant de répondre. */
+  away = new Set<string>();
   reveal: Reveal | null = null;
   totals: Record<string, number> = {};
   participants = new Map<string, Player>();
@@ -55,6 +57,7 @@ export class Game {
       deadline: this.deadline,
       serverNow: Date.now(),
       answered: [...this.answers.keys()],
+      away: [...this.away],
       presence: [...this.presence.values()].map((p) => p.player),
       reveal: this.phase === "reveal" ? this.reveal : null,
       totals: this.totals,
@@ -119,6 +122,7 @@ export class Game {
     this.qIndex = i;
     this.phase = "question";
     this.answers = new Map();
+    this.away = new Set();
     this.reveal = null;
     this.hintsShown = 0;
     this.startedAt = Date.now();
@@ -138,7 +142,7 @@ export class Game {
     if (at > q.timeLimit * 1000 + GRACE_MS) return "Le temps est écoulé.";
     const v = validAnswer(q, value);
     if (v === undefined) return "Réponse invalide.";
-    this.answers.set(player.id, { playerId: player.id, value: v, at });
+    this.answers.set(player.id, { playerId: player.id, value: v, at, away: this.away.has(player.id) });
     this.participants.set(player.id, player);
     // Tout le monde a répondu : on révèle sans attendre la fin du chrono.
     const everyone = [...this.presence.keys()].every((id) => this.answers.has(id));
@@ -155,7 +159,7 @@ export class Game {
     this.reveal = scoreQuestion(q, answers);
     for (const [id, p] of Object.entries(this.reveal.points)) this.totals[id] = (this.totals[id] ?? 0) + p;
     for (const id of this.participants.keys()) this.totals[id] ??= 0;
-    this.store.saveAnswers(this.gameId, q.id, answers.map((a) => ({ playerId: a.playerId, value: a.value, ms: a.at, points: this.reveal!.points[a.playerId] ?? 0 })));
+    this.store.saveAnswers(this.gameId, q.id, answers.map((a) => ({ playerId: a.playerId, value: a.value, ms: a.at, points: this.reveal!.points[a.playerId] ?? 0, away: !!a.away })));
     this.phase = "reveal";
     this.broadcast();
     return null;
@@ -184,11 +188,23 @@ export class Game {
     this.publish({ t: "toast", msg });
   }
 
-  react(playerId: string, e: string) {
-    if (!REACTIONS.includes(e)) return;
+  /** Un emoji ou un sticker de l'équipe, lancé à tout le monde ou sur quelqu'un en particulier. */
+  react(playerId: string, msg: { e?: string; sticker?: string; target?: string }) {
+    const e = msg.e && REACTIONS.includes(msg.e) ? msg.e : undefined;
+    const sticker = msg.sticker && this.store.sticker(String(msg.sticker)) ? String(msg.sticker) : undefined;
+    if (!e && !sticker) return;
+    const target = msg.target && msg.target !== playerId && this.store.player(String(msg.target)) ? String(msg.target) : undefined;
     const now = Date.now();
     if (now - (this.lastReact.get(playerId) ?? 0) < 700) return;
     this.lastReact.set(playerId, now);
-    this.publish({ t: "react", playerId, e });
+    this.publish({ t: "react", playerId, e, sticker, target });
+  }
+
+  /** Quelqu'un a quitté l'onglet pendant une question : l'équipe le sait tout de suite. */
+  markAway(player: Player) {
+    if (this.phase !== "question" || this.answers.has(player.id) || this.away.has(player.id)) return;
+    this.away.add(player.id);
+    this.toast(`🤖 ${player.name} vient de quitter l'onglet… on dit ça de même.`);
+    this.broadcast();
   }
 }

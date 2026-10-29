@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { type Player, type PublicState } from "../src/shared";
-import { api, auth, AVATARS, COLORS, confetti, frDay, fmt, ord, sfx, signed, toast, useCountdown, useGame } from "./lib";
-import { Avatar, FloatingReactions, Podium, QHead, Reactions, RevealPanel, Shape, SHAPE_NAMES, Timer, Visual } from "./ui";
+import { api, auth, AVATARS, COLORS, confetti, frDay, fmt, ord, sfx, signed, toast, uploadImage, useAwayWatch, useCountdown, useGame } from "./lib";
+import { Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, SHAPE_NAMES, TeaseBar, Timer, Visual } from "./ui";
 
 export function PlayerPage() {
   const [me, setMe] = useState<Player | null>(null);
@@ -21,12 +21,18 @@ export function ProfileForm({ me, onDone, onCancel }: { me?: Player; onDone: (p:
   const [name, setName] = useState(me?.name ?? "");
   const [emoji, setEmoji] = useState(me?.emoji ?? AVATARS[(Math.random() * AVATARS.length) | 0]!);
   const [color, setColor] = useState(me?.color ?? COLORS[(Math.random() * COLORS.length) | 0]!);
+  const [avatarId, setAvatarId] = useState<string | null>(me?.avatarId ?? null);
   const [busy, setBusy] = useState(false);
+  const addPhoto = async (f: File) => {
+    setBusy(true);
+    try { setAvatarId(await uploadImage(f, 512, true)); } catch (err) { toast((err as Error).message); }
+    finally { setBusy(false); }
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      if (me) onDone(await api<Player>("/api/me", { method: "PATCH", body: { name, emoji, color } }));
+      if (me) onDone(await api<Player>("/api/me", { method: "PATCH", body: { name, emoji, color, avatarId } }));
       else {
         const r = await api<{ player: Player; token: string }>("/api/join", { body: { teamCode: code, name, emoji, color } });
         auth.token = r.token;
@@ -46,7 +52,17 @@ export function ProfileForm({ me, onDone, onCancel }: { me?: Player; onDone: (p:
           <span className="muted small">Matt te le donne dans le chat Teams.</span></div>
       )}
       <div className="field"><label htmlFor="name">Ton nom</label><input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} required /></div>
-      <div className="field"><span className="flabel">Ton avatar</span>
+      {me ? (
+        <div className="field"><span className="flabel">Ta photo ou ta caricature</span>
+          <div className="row">
+            <Avatar p={{ ...me, name, emoji, color, avatarId }} size="xl" />
+            <label className="btn sm">{avatarId ? "Changer l'image" : "Téléverser une image"}<input type="file" accept="image/png,image/webp,image/jpeg,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void addPhoto(f); e.target.value = ""; }} /></label>
+            {avatarId && <button type="button" className="btn sm ghost" onClick={() => setAvatarId(null)}>Revenir à l'emoji</button>}
+          </div>
+          <span className="muted small">Une image carrée, visage centré. Les PNG détourés rendent super bien.</span>
+        </div>
+      ) : <p className="muted small">Tu pourras ajouter ta caricature ensuite, dans ton profil.</p>}
+      <div className="field"><span className="flabel">{avatarId ? "Ton emoji (de secours)" : "Ton avatar"}</span>
         <div className="emoji-grid" role="radiogroup" aria-label="Avatar">
           {AVATARS.map((a) => <button type="button" key={a} role="radio" aria-checked={a === emoji} className="emoji-opt" onClick={() => setEmoji(a)}>{a}</button>)}
         </div></div>
@@ -55,7 +71,7 @@ export function ProfileForm({ me, onDone, onCancel }: { me?: Player; onDone: (p:
           {COLORS.map((c) => <button type="button" key={c} role="radio" aria-checked={c === color} aria-label={c} className="color-opt" style={{ "--c": c } as CSSProperties} onClick={() => setColor(c)} />)}
         </div></div>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="row" style={{ gap: 8 }}><Avatar p={{ id: "", name, emoji, color }} size="lg" /><b>{name || "Toi"}</b></span>
+        <span className="row" style={{ gap: 8 }}><Avatar p={{ id: me?.id ?? "", name, emoji, color, avatarId, champ: me?.champ }} size="lg" /><b>{name || "Toi"}</b></span>
         <span className="row">{onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}<button className="btn primary" disabled={busy}>{me ? "Enregistrer" : "C'est parti"}</button></span>
       </div>
     </form>
@@ -66,7 +82,7 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
   const g = useGame("player");
   const s = g.state;
   const [editing, setEditing] = useState(false);
-  const send = (e: string) => g.send({ t: "react", e });
+  const tease = (m: { e?: string; sticker?: string; target?: string }) => g.send({ t: "react", ...m });
   const prevPhase = useRef<string>("");
 
   // Sons et confettis aux changements de phase.
@@ -87,14 +103,15 @@ function PlayerGame({ me, setMe }: { me: Player; setMe: (p: Player) => void }) {
           : s.phase === "idle" ? <Idle me={me} />
           : s.phase === "lobby" ? <Lobby s={s} />
           : s.phase === "question" ? <QuestionView key={s.question!.id} s={s} me={me} g={g} />
-          : s.phase === "reveal" ? <RevealView s={s} me={me} onReact={send} />
-          : <PodiumView s={s} me={me} onReact={send} />}
+          : s.phase === "reveal" ? <RevealView s={s} me={me} />
+          : <PodiumView s={s} me={me} />}
         {!g.connected && s && <p className="offline">Connexion perdue. On se reconnecte…</p>}
       </div>
       <aside className="side">
         <div className="card">
-          <div className="profile"><Avatar p={me} size="lg" /><div><b style={{ fontSize: 18 }}>{me.name}</b><br /><button className="linkish" onClick={() => setEditing(true)}>Modifier mon profil</button></div></div>
+          <div className="profile"><Avatar p={me} size="lg" /><div><b style={{ fontSize: 18 }}>{me.name}</b>{me.champ && <span className="champ-tag">👑 Champion en titre</span>}<br /><button className="linkish" onClick={() => setEditing(true)}>Modifier mon profil</button></div></div>
         </div>
+        <div className="card"><h3>Charrier l'équipe</h3><TeaseBar send={tease} players={s?.presence ?? []} meId={me.id} /></div>
         <div className="card">
           <h3>Points du jour</h3>
           {s && s.phase !== "idle" ? (
@@ -155,6 +172,9 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
   const [music, setMusic] = useState({ title: "", artist: "", year: "" });
   const lastSec = useRef(99);
   const done = answered || left <= 0;
+  const wentAway = s.away.includes(me.id);
+  const flagAway = useCallback(() => g.send({ t: "away" }), [g.send]);
+  useAwayWatch(!done, flagAway);
 
   const sec = Math.ceil(left / 1000);
   useEffect(() => { if (sec !== lastSec.current) { lastSec.current = sec; if (sec <= 5 && sec > 0 && !done) sfx("tick"); } }, [sec, done]);
@@ -212,6 +232,8 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
         </div>
       )}
 
+      {wentAway && !done && <p className="robots">🤖 T'as quitté l'onglet : l'équipe le sait{q.data.strict ? ", et en mode cerveau strict, cette question vaut 0." : ". Bonne réponse quand même, mais sans bonus vitesse ni prime cerveau."}</p>}
+      {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur l'onglet jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter l'onglet donne 0." : ""}</p>}
       {done && (
         <div className="lockmsg">
           {answered ? "Réponse verrouillée." : "Temps écoulé!"} En attente des autres…
@@ -223,7 +245,7 @@ function QuestionView({ s, me, g }: { s: PublicState; me: Player; g: ReturnType<
   );
 }
 
-function RevealView({ s, me, onReact }: { s: PublicState; me: Player; onReact: (e: string) => void }) {
+function RevealView({ s, me }: { s: PublicState; me: Player }) {
   const r = s.reveal!, q = s.question!;
   const pts = r.points[me.id];
   const didAnswer = pts !== undefined;
@@ -242,13 +264,12 @@ function RevealView({ s, me, onReact }: { s: PublicState; me: Player; onReact: (
         </div>
       </div>
       <RevealPanel s={s} meId={me.id} />
-      <Reactions onSend={onReact} />
       <p className="muted small next-row">{last ? "Dernière question! Matt va dévoiler le podium." : "Matt lance la prochaine question quand tout le monde a fini de rire."}</p>
     </>
   );
 }
 
-function PodiumView({ s, me, onReact }: { s: PublicState; me: Player; onReact: (e: string) => void }) {
+function PodiumView({ s, me }: { s: PublicState; me: Player }) {
   const order = Object.entries(s.totals).sort((a, b) => b[1] - a[1]);
   const mine = order.findIndex(([id]) => id === me.id) + 1;
   const winner = order[0] && s.players[order[0][0]];
@@ -258,7 +279,6 @@ function PodiumView({ s, me, onReact }: { s: PublicState; me: Player; onReact: (
       <h2 className="display title-lg sun">{winner ? (winner.id === me.id ? "Tu gagnes la journée!" : `${winner.name} gagne la journée!`) : "Fin de la partie"}</h2>
       <Podium s={s} meId={me.id} />
       {mine > 0 && <p className="summary">Toi : <b>{ord(mine)}</b> aujourd'hui avec <b className="mono">{fmt(s.totals[me.id] ?? 0)}</b> pts.</p>}
-      <Reactions onSend={onReact} />
       <a className="btn primary" href="#/classement">Voir le classement de la saison</a>
     </div>
   );

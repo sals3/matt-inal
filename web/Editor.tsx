@@ -179,6 +179,7 @@ function Editor() {
                   <div className="row">
                     {q.type !== "music" && <label className="toggle"><input type="checkbox" checked={q.speedBonus} onChange={(e) => patchQ((x) => ({ ...x, speedBonus: e.target.checked }))} /> Bonus vitesse (200 pts max)</label>}
                     <label className="toggle"><input type="checkbox" checked={q.doublePoints} onChange={(e) => patchQ((x) => ({ ...x, doublePoints: e.target.checked }))} /> Points doubles</label>
+                    <label className="toggle" title="Quitter l'onglet pendant la question (ChatGPT, Google…) donne 0 point"><input type="checkbox" checked={!!q.data.strict} onChange={(e) => patchData({ strict: e.target.checked || undefined })} /> 🧠 Cerveau strict (pas d'IA)</label>
                   </div>
                   <div className="row ed-actions">
                     <button className="btn ghost sm" onClick={() => move(-1)} disabled={qi === 0}>Monter</button>
@@ -206,6 +207,7 @@ function Editor() {
             <li>Une capture d'écran se colle directement avec Ctrl+V.</li>
             <li>« Majorité l'emporte » met tout le monde à égalité : parfait pour casser une série.</li>
             <li>Si personne ne trouve, c'est toi qui marques un point dans « Matt contre l'équipe ».</li>
+            <li>« Cerveau strict » sur une question de culture G : quitter l'onglet pour demander à l'IA donne 0.</li>
           </ul>
         </div>
       </div>

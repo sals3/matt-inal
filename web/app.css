@@ -100,6 +100,29 @@ main { max-width: 1240px; margin: 0 auto; }
 .av.lg { width: 64px; height: 64px; font-size: 34px; border-width: 3px; }
 .av.xl { width: 84px; height: 84px; font-size: 46px; border-width: 3px; }
 .av.sm { width: 28px; height: 28px; font-size: 15px; }
+.av.xxl { width: 120px; height: 120px; font-size: 64px; border-width: 4px; }
+.av { position: relative; }
+.av.photo { background-size: cover; background-position: center 20%; background-repeat: no-repeat; }
+/* Champion en titre : un anneau doré qui tourne, et une petite couronne. */
+.av.champ { border-color: #F2A900; }
+.av.champ::before {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(#FFE58F, #F2A900, #8F6200, #FFE58F, #F2A900, #FFF3C4, #FFE58F);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  animation: spin 5s linear infinite; filter: drop-shadow(0 0 4px rgba(242, 169, 0, .7));
+}
+.av.champ::after { content: "👑"; position: absolute; top: -.55em; right: -.25em; font-size: max(11px, 38%); transform: rotate(18deg); }
+.av.sm.champ::before { inset: -3px; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }
+.av.away::after { content: "🤖"; position: absolute; right: -.3em; bottom: -.3em; top: auto; font-size: max(11px, 40%); transform: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.champ-tag { display: inline-flex; margin-left: 8px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #FFE58F; color: #5A3D00; vertical-align: middle; }
+.profile .champ-tag { margin: 4px 0 0; }
+.champ-banner { margin-top: 12px; background: linear-gradient(90deg, #FFE58F, #F2B705); color: #3A2508; padding: 10px 14px; border-radius: 12px; }
+.pill.brain { background: var(--good-soft); color: var(--good); }
+.robots { background: var(--surface-2); border: 1.5px dashed var(--ink-2); border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+.robots.inline { padding: 4px 10px; font-size: 13px; }
+.brain-note { margin-top: -6px; }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field label, .flabel { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .input { background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 13px; font-size: 15px; min-width: 0; width: 100%; }
@@ -226,6 +249,8 @@ button.tile:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tcd);
 .next-row { margin-top: auto; }
 .float-layer { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; }
 .floaty { position: absolute; bottom: 40px; font-size: 34px; display: grid; justify-items: center; animation: floatup 2.2s ease-out forwards; }
+.floaty.big img { width: 130px; height: 130px; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .35)); }
+.floaty.big { animation-duration: 3.2s; }
 .floaty small { font-size: 11px; font-family: var(--f-mono); background: var(--surface); color: var(--ink); padding: 1px 6px; border-radius: 6px; }
 @keyframes floatup { to { transform: translateY(-55vh) scale(1.4); opacity: 0; } }
 
@@ -368,6 +393,52 @@ button.tile:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tcd);
 .hall { display: grid; gap: 8px; margin-top: 12px; }
 .hall > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
 .hall > div > span:first-child::first-letter { text-transform: uppercase; }
+
+/* Charrier l'équipe : emojis et stickers */
+.tease { display: grid; gap: 10px; margin-top: 10px; }
+.emoji-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.sticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
+.sticker { aspect-ratio: 1; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 4px; display: grid; place-items: center; transition: transform .1s; }
+.sticker:hover { transform: scale(1.06) rotate(-3deg); }
+.sticker img { width: 100%; height: 100%; object-fit: contain; }
+.sticker.add { border-style: dashed; border-width: 2px; font-size: 26px; color: var(--ink-2); cursor: pointer; }
+.sticker.busy { opacity: .5; }
+.sticker-grid.admin { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); margin-top: 12px; }
+.sticker-admin { display: grid; gap: 4px; justify-items: center; background: var(--bg); border-radius: 12px; padding: 8px; text-align: center; }
+.sticker-admin img { width: 64px; height: 64px; object-fit: contain; }
+.sticker-admin span { overflow-wrap: anywhere; }
+
+/* La Coupe : laiton sur socle de bois */
+.cup { display: grid; justify-items: center; }
+.cup-svg { width: min(230px, 75%); height: auto; overflow: visible; filter: drop-shadow(0 10px 18px rgba(143, 98, 0, .35)); }
+.cup-engrave { font-family: var(--f-display); font-size: 15px; fill: rgba(90, 58, 0, .78); letter-spacing: .04em; }
+.cup-engrave.sm { font-family: var(--f-mono); font-size: 6.5px; letter-spacing: .18em; }
+.cup .sparkles path { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.cup .sparkles path + path { animation-delay: 1.2s; }
+@keyframes twinkle { 50% { opacity: .2; transform: scale(.6); } }
+.cup-base { width: 100%; margin-top: -2px; background: linear-gradient(180deg, #6B4423, #3E2612); border-radius: 10px; padding: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .12); }
+.plaque { background: linear-gradient(135deg, #F1D58A, #C9962F 55%, #F6E2A6); color: #3A2508; border-radius: 6px; padding: 8px 10px; display: grid; gap: 2px; justify-items: center; text-align: center; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), inset 0 -1px 0 rgba(0, 0, 0, .25), 0 2px 4px rgba(0, 0, 0, .3); }
+.pl-season { font-family: var(--f-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+.pl-name { font-family: var(--f-display); font-size: 18px; line-height: 1.15; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.pl-pts { font-family: var(--f-mono); font-size: 11px; opacity: .75; }
+.plaque.blank .pl-name { opacity: .5; }
+.plaque.next { background: rgba(255, 255, 255, .06); color: #F1D58A; border: 1.5px dashed rgba(241, 213, 138, .5); box-shadow: none; }
+.cup-card h3 { margin-bottom: 8px; }
+
+/* Matt : équipe, saisons */
+.team { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 960px) { .team { grid-template-columns: minmax(0, 1fr); } }
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+.roster-card { display: grid; justify-items: center; gap: 8px; padding: 14px 10px; background: var(--bg); border-radius: 14px; }
+.roster-card .input { text-align: center; padding: 6px 8px; }
+.roster-card .row { justify-content: center; }
+.season-list { display: grid; gap: 10px; margin-top: 12px; }
+.season-row { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+.season-row.open { border-color: var(--good); }
+.season-top { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.season-champ { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 90px; gap: 8px; }
+@media (max-width: 560px) { .season-champ { grid-template-columns: minmax(0, 1fr); } }
+.close-season { margin-top: 16px; padding: 12px 14px; background: var(--sun-soft); border-radius: 12px; display: grid; gap: 10px; font-size: 14px; }
 
 /* Toasts et confettis */
 .toasts { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; gap: 8px; z-index: 40; width: max-content; max-width: calc(100% - 32px); }

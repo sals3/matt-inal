@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ClientMsg, PublicState, ServerMsg } from "../src/shared";
+import type { ClientMsg, PublicState, ServerMsg, Sticker } from "../src/shared";
 
 /* ---------- Jetons (joueur et Matt) ---------- */
 const ls = {
@@ -44,8 +44,20 @@ export function toast(msg: string) {
 export const useToasts = () =>
   useSyncExternalStore((cb) => { toastSubs.add(cb); return () => { toastSubs.delete(cb); }; }, () => toasts);
 
+/* ---------- Stickers de l'équipe (rechargés quand quelqu'un en ajoute un) ---------- */
+let stickers: Sticker[] = [];
+const stickerSubs = new Set<() => void>();
+export async function refreshStickers() {
+  try { stickers = await api<Sticker[]>("/api/stickers"); stickerSubs.forEach((f) => f()); } catch { /* pas connecté */ }
+}
+export function useStickers() {
+  useEffect(() => { if (!stickers.length) void refreshStickers(); }, []);
+  return useSyncExternalStore((cb) => { stickerSubs.add(cb); return () => { stickerSubs.delete(cb); }; }, () => stickers);
+}
+
 /* ---------- Partie en direct (WebSocket) ---------- */
-export type ReactFn = (playerId: string, e: string) => void;
+export type ReactEvent = { playerId: string; e?: string; sticker?: string; target?: string };
+export type ReactFn = (r: ReactEvent) => void;
 export function useGame(role: "player" | "host") {
   const [state, setState] = useState<PublicState | null>(null);
   const [connected, setConnected] = useState(false);
@@ -66,7 +78,8 @@ export function useGame(role: "player" | "host") {
         const m = JSON.parse(ev.data) as ServerMsg;
         if (m.t === "state") { offset.current = m.s.serverNow - Date.now(); setState(m.s); }
         else if (m.t === "toast" || m.t === "error") toast(m.msg);
-        else if (m.t === "react") reactSubs.current.forEach((f) => f(m.playerId, m.e));
+        else if (m.t === "react") reactSubs.current.forEach((f) => f(m));
+        else if (m.t === "stickers") void refreshStickers();
       };
       ws.onclose = () => {
         setConnected(false);
@@ -118,7 +131,10 @@ export const AVATARS = ["🦊", "🐻", "🦉", "🐸", "🐢", "🐙", "🦝", 
 export const COLORS = ["#E4531A", "#C2255C", "#9B3FC2", "#4655C8", "#0B8374", "#127A4C", "#9A6B3F", "#5F5887"];
 
 /* ---------- Images : on réduit avant l'envoi ---------- */
-export async function resizeImage(file: Blob, max = 1600): Promise<Blob> {
+const toBlob = (c: HTMLCanvasElement, type: string, q?: number) => new Promise<Blob | null>((r) => c.toBlob(r, type, q));
+
+/** Réduit l'image. `alpha` garde la transparence (caricatures détourées, stickers). */
+export async function resizeImage(file: Blob, max = 1600, alpha = false): Promise<Blob> {
   if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
@@ -126,7 +142,35 @@ export async function resizeImage(file: Blob, max = 1600): Promise<Blob> {
   c.width = Math.round(bmp.width * scale);
   c.height = Math.round(bmp.height * scale);
   c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
-  return new Promise((resolve) => c.toBlob((b) => resolve(b ?? file), "image/jpeg", 0.85));
+  if (!alpha) return (await toBlob(c, "image/jpeg", 0.85)) ?? file;
+  const webp = await toBlob(c, "image/webp", 0.9);
+  return webp?.type === "image/webp" ? webp : (await toBlob(c, "image/png")) ?? file;
+}
+
+/** Téléverse une image et renvoie l'identifiant du média. */
+export async function uploadImage(file: Blob, max: number, alpha = false): Promise<string> {
+  const blob = await resizeImage(file, max, alpha);
+  return (await api<{ id: string }>("/api/media", { raw: blob })).id;
+}
+
+/**
+ * Mode 100 % cerveau : si l'onglet reste caché 2 secondes pendant une question
+ * (ChatGPT, Google…), on le signale une fois. Un coup d'œil à Teams ne compte pas.
+ */
+export function useAwayWatch(active: boolean, onAway: () => void) {
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!active) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onVis = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden" && !fired.current) {
+        timer = setTimeout(() => { fired.current = true; onAway(); }, 2000);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); };
+  }, [active, onAway]);
 }
 
 /* ---------- Sons ---------- */

@@ -2,7 +2,7 @@ import type { ServerWebSocket } from "bun";
 import index from "../web/index.html";
 import { openStore } from "./db";
 import { Game } from "./game";
-import { dayStr, monthOf, TYPES, type ClientMsg, type Player, type Question, type QuizStatus, type ServerMsg } from "./shared";
+import { dayStr, TYPES, type ClientMsg, type Player, type Question, type QuizStatus, type ServerMsg } from "./shared";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const TEAM_CODE = (process.env.TEAM_CODE ?? "MATIN").trim().toUpperCase();
@@ -10,10 +10,12 @@ const ADMIN_PIN = (process.env.ADMIN_PIN ?? "1234").trim();
 const DB_PATH = process.env.DB_PATH ?? "./data/matt-inal.db";
 const PROD = process.env.NODE_ENV === "production";
 const MAX_MEDIA = 8 * 1024 * 1024;
+/** Les joueurs peuvent téléverser leur photo et des stickers, mais pas de gros fichiers. */
+const MAX_PLAYER_MEDIA = 3 * 1024 * 1024;
 
 if (PROD && ADMIN_PIN === "1234") console.warn("⚠️  ADMIN_PIN est encore la valeur par défaut. Définis-le dans les variables d'environnement.");
 
-const store = openStore(DB_PATH);
+const store = openStore(DB_PATH, dayStr());
 
 type WsData = { player: Player | null; isAdmin: boolean };
 let server: ReturnType<typeof Bun.serve<WsData, any>>;
@@ -31,12 +33,15 @@ const clean = (s: unknown, max: number) => String(s ?? "").trim().slice(0, max);
 const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function profile(b: Partial<{ name: string; emoji: string; color: string }>) {
+function profile(b: Partial<{ name: string; emoji: string; color: string; avatarId: string | null }>) {
   const name = clean(b.name, 24);
   const emoji = clean(b.emoji, 8) || "🙂";
   const color = /^#[0-9a-f]{6}$/i.test(String(b.color)) ? String(b.color) : "#D94E16";
-  return name ? { name, emoji, color } : null;
+  const avatarId = b.avatarId && store.media(clean(b.avatarId, 32)) ? clean(b.avatarId, 32) : null;
+  return name ? { name, emoji, color, avatarId } : null;
 }
+const optNum = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Math.trunc(Number(v)));
+const linkedPlayer = (id: unknown) => (id && store.player(String(id)) ? String(id) : null);
 
 const TYPE_IDS = new Set(TYPES.map((t) => t.id));
 function cleanQuestion(raw: any): Question | null {
@@ -59,6 +64,7 @@ function cleanQuestion(raw: any): Question | null {
     Object.assign(data, { choices });
     if (raw.type !== "majority") data.correct = Math.min(n - 1, Math.max(0, Math.trunc(num(d.correct, 0))));
   }
+  if (d.strict) data.strict = true;
   return {
     id: clean(raw.id, 32),
     type: raw.type,
@@ -95,8 +101,7 @@ server = Bun.serve<WsData, any>({
         if (!me) return fail("Non connecté.", 401);
         const p = profile(await body(req));
         if (!p) return fail("Choisis un nom.");
-        store.updatePlayer(me.id, p.name, p.emoji, p.color);
-        const updated = { id: me.id, ...p };
+        const updated = store.updatePlayer(me.id, p)!;
         game.rename(updated);
         return json(updated);
       },
@@ -142,11 +147,13 @@ server = Bun.serve<WsData, any>({
 
     "/api/media": {
       POST: async (req) => {
-        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        const admin = isAdmin(req);
+        if (!admin && !playerOf(req)) return fail("Non connecté.", 401);
         const mime = (req.headers.get("content-type") ?? "").split(";")[0]!.trim();
-        if (!/^(image|audio)\//.test(mime)) return fail("Seulement des images ou des extraits audio.");
+        if (admin ? !/^(image|audio)\//.test(mime) : !/^image\/(png|jpeg|webp|gif)$/.test(mime)) return fail("Format de fichier non accepté.");
         const bytes = new Uint8Array(await req.arrayBuffer());
-        if (!bytes.length || bytes.length > MAX_MEDIA) return fail("Fichier vide ou trop gros (8 Mo max).");
+        const max = admin ? MAX_MEDIA : MAX_PLAYER_MEDIA;
+        if (!bytes.length || bytes.length > max) return fail(`Fichier vide ou trop gros (${max / 1024 / 1024} Mo max).`);
         return json({ id: store.saveMedia(mime, bytes) });
       },
     },
@@ -158,10 +165,87 @@ server = Bun.serve<WsData, any>({
 
     "/api/leaderboard": (req) => {
       if (!playerOf(req) && !isAdmin(req)) return fail("Non connecté.", 401);
-      const m = new URL(req.url).searchParams.get("month") ?? monthOf(dayStr());
-      return /^\d{4}-\d{2}$/.test(m) ? json(store.leaderboard(m)) : fail("Mois invalide.");
+      return json(store.leaderboard(new URL(req.url).searchParams.get("season")));
     },
     "/api/players": (req) => (isAdmin(req) ? json(store.players()) : fail("Réservé à Matt.", 401)),
+    "/api/players/:id": {
+      // Matt peut téléverser les caricatures de toute l'équipe.
+      PATCH: async (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        if (!store.player(req.params.id)) return fail("Joueur introuvable.", 404);
+        const p = profile(await body(req));
+        if (!p) return fail("Choisis un nom.");
+        const updated = store.updatePlayer(req.params.id, p)!;
+        game.rename(updated);
+        return json(updated);
+      },
+    },
+
+    "/api/seasons": {
+      GET: (req) => (playerOf(req) || isAdmin(req) ? json(store.seasons()) : fail("Non connecté.", 401)),
+      // Une ancienne saison (jouée avant l'app) à graver sur la Coupe.
+      POST: async (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        const b = await body<{ num: number; name: string; championName: string; championId: string; championPoints: number }>(req);
+        const num = optNum(b.num);
+        if (num === null || num < 1) return fail("Numéro de saison invalide.");
+        return json(store.addLegacySeason(num, clean(b.name, 60) || `Saison ${num}`, clean(b.championName, 40), linkedPlayer(b.championId), optNum(b.championPoints)));
+      },
+    },
+    "/api/seasons/close": {
+      POST: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        const r = store.closeSeason(dayStr());
+        if (typeof r === "string") return fail(r);
+        game.toast(`🏆 ${r.closed.championName} est gravé·e sur la Coupe! ${r.opened.name} commence.`);
+        return json(r);
+      },
+    },
+    "/api/seasons/:id": {
+      PATCH: async (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        const s = store.season(req.params.id);
+        if (!s) return fail("Saison introuvable.", 404);
+        const b = await body<{ num: number; name: string; championName: string; championId: string; championPoints: number; startDay: string }>(req);
+        const startDay = s.status === "open" && typeof b.startDay === "string" && isDay(b.startDay) ? b.startDay : s.startDay;
+        return json(store.updateSeason(s.id, {
+          num: optNum(b.num) ?? s.num, name: clean(b.name, 60) || s.name, championName: clean(b.championName, 40),
+          championId: linkedPlayer(b.championId), championPoints: optNum(b.championPoints), startDay,
+        }));
+      },
+      DELETE: (req) => {
+        if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
+        store.deleteLegacySeason(req.params.id);
+        return json({ ok: true });
+      },
+    },
+
+    "/api/stickers": {
+      GET: (req) => (playerOf(req) || isAdmin(req) ? json(store.stickers()) : fail("Non connecté.", 401)),
+      POST: async (req) => {
+        const me = playerOf(req);
+        if (!me && !isAdmin(req)) return fail("Non connecté.", 401);
+        const b = await body<{ mediaId: string; name: string }>(req);
+        const mediaId = clean(b.mediaId, 32);
+        if (!store.media(mediaId)) return fail("Téléverse d'abord l'image du sticker.");
+        if (store.stickers().length >= 120) return fail("La boîte à stickers est pleine. Demande à Matt de faire le ménage.");
+        const s = store.addSticker(mediaId, clean(b.name, 30) || "Sticker", me?.id ?? null);
+        server.publish("game", JSON.stringify({ t: "stickers" } satisfies ServerMsg));
+        if (me) game.toast(`${me.name} a ajouté un nouveau sticker : « ${s.name} »`);
+        return json(s);
+      },
+    },
+    "/api/stickers/:id": {
+      DELETE: (req) => {
+        const me = playerOf(req);
+        const s = store.sticker(req.params.id);
+        if (!s) return fail("Sticker introuvable.", 404);
+        if (!isAdmin(req) && (!me || me.id !== s.playerId)) return fail("Seulement Matt ou l'auteur du sticker peut le retirer.", 403);
+        store.removeSticker(s.id);
+        server.publish("game", JSON.stringify({ t: "stickers" } satisfies ServerMsg));
+        return json({ ok: true });
+      },
+    },
     "/api/bonus": {
       POST: async (req) => {
         if (!isAdmin(req)) return fail("Réservé à Matt.", 401);
@@ -201,7 +285,8 @@ server = Bun.serve<WsData, any>({
       const reply = (err: string | null) => { if (err) ws.send(JSON.stringify({ t: "error", msg: err } satisfies ServerMsg)); };
       const me = ws.data.player;
       if (msg.t === "answer" && me) reply(game.answer(me, String(msg.qid), msg.value));
-      else if (msg.t === "react" && me) game.react(me.id, String(msg.e));
+      else if (msg.t === "react" && me) game.react(me.id, msg);
+      else if (msg.t === "away" && me) game.markAway(me);
       else if (msg.t === "host") {
         if (!ws.data.isAdmin) return reply("Réservé à Matt.");
         if (msg.action === "open") reply(game.open(String(msg.quizId ?? "")));

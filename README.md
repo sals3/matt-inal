@@ -9,7 +9,12 @@ Le quiz du standup de l'équipe de Matt. Matt prépare ses questions, les partag
 - **Pointage** : 1 000 pts pour la bonne réponse, bonus vitesse plafonné à 200, points doubles au besoin.
 - **Espace Matt** (`#/matt`, protégé par NIP) : planning des 10 prochains jours, éditeur avec image de fond collée au Ctrl+V, aperçu téléphone, extrait audio pour le Mercredi musical.
 - **Écran d'animation** (`#/animer`) : à partager dans Teams. Lobby, questions, révélation avec les votes de chacun, podium avec confettis, réactions emoji de l'équipe, bonus arbitraire « +100, c'était drôle ».
-- **Classement** (`#/classement`) : saison mensuelle, mouvements, séries 🔥, Matt contre l'équipe, temple de la renommée.
+- **Classement** (`#/classement`) : saison en cours, mouvements, séries 🔥, % cerveau, Matt contre l'équipe.
+- **La Coupe** : une plaque gravée par saison. Les saisons 1 et 2 (avant l'app) sont prêtes à graver dans `#/equipe`. Quand Matt termine une saison, le premier du classement est gravé et la suivante commence.
+- **Champion en titre** : anneau doré animé et couronne autour de sa photo, partout dans l'app.
+- **Caricatures** : chaque joueur téléverse sa photo dans son profil, ou Matt le fait pour toute l'équipe dans `#/equipe`.
+- **Stickers de l'équipe** : tout le monde ajoute ses stickers (PNG détourés) et les lance à tout le monde ou sur quelqu'un (« Julie → Kevin »). Matt fait le ménage dans `#/equipe`.
+- **Mode 100 % cerveau** : l'IA est permise, mais quitter l'onglet plus de 2 secondes pendant une question s'affiche en direct (🤖), coûte le bonus vitesse et la prime cerveau (+100). En « cerveau strict » (case dans l'éditeur), ça donne 0.
 
 ## Pile technique (légère et un brin expérimentale)
 
@@ -56,3 +61,5 @@ Tout supprimer : `az group delete -n rg-matt-inal --subscription "Visual Studio 
 - Trophées hebdomadaires (Le Flash, La Remontée, Le Roi du presque…)
 - Applaudimètre et palmarès des performances de Matt au Mercredi musical
 - Connexion avec le compte Microsoft (demande une inscription d'app par l'IT)
+
+> Le test de bout en bout (`scripts/smoke.ts`) termine la saison en cours : il refuse de tourner ailleurs qu'en local.

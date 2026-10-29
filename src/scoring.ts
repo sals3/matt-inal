@@ -3,12 +3,16 @@ import { fuzzyMatch, type Question, type Reveal } from "./shared";
 export const BASE = 1000;
 export const SPEED_MAX = 200;
 export const CLOSEST_MIN_FOR_BEST = 500;
+/** Prime « 100 % cerveau » : bonne réponse sans quitter l'onglet. */
+export const BRAIN_BONUS = 100;
 
 export interface RawAnswer {
   playerId: string;
   value: unknown;
   /** Millisecondes écoulées depuis le début de la question. */
   at: number;
+  /** A quitté l'onglet (ChatGPT, Google…) avant de répondre. */
+  away?: boolean;
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -57,8 +61,10 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
   const counts: number[] = Array(q.data.choices?.length ?? 0).fill(0);
   const correct: number[] = [];
   const mult = q.doublePoints ? 2 : 1;
-  const bonus = (a: RawAnswer) => (q.speedBonus ? speedBonus(a.at, limitMs) : 0);
-  const reveal: Reveal = { questionId: q.id, correct, counts, picks, points, detail, nobody: false };
+  // L'IA est permise, mais on perd le bonus vitesse en quittant l'onglet.
+  const bonus = (a: RawAnswer) => (q.speedBonus && !a.away ? speedBonus(a.at, limitMs) : 0);
+  const away = answers.filter((a) => a.away).map((a) => a.playerId);
+  const reveal: Reveal = { questionId: q.id, correct, counts, picks, points, detail, nobody: false, away };
 
   if (q.type === "closest") {
     const target = q.data.answer ?? 0;
@@ -105,6 +111,19 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
       const ok = correct.includes(Number(a.value));
       points[a.playerId] = ok ? (BASE + bonus(a)) * mult : 0;
       detail[a.playerId] = ok ? (majority ? "Avec la majorité" : "Bonne réponse") : majority ? "Esprit libre" : "Mauvaise réponse";
+    }
+  }
+
+  for (const a of answers) {
+    const id = a.playerId;
+    if (a.away && q.data.strict) {
+      points[id] = 0;
+      detail[id] = "🤖 A quitté l'onglet en mode cerveau strict";
+    } else if (a.away) {
+      detail[id] += " · 🤖 A quitté l'onglet (pas de bonus vitesse)";
+    } else if ((points[id] ?? 0) > 0) {
+      points[id]! += BRAIN_BONUS * mult;
+      detail[id] += " · 🧠 Prime cerveau";
     }
   }
 
