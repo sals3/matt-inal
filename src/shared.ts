@@ -41,6 +41,10 @@ export interface QData {
   audioId?: string | null;
   /** Mode cerveau strict : quitter l'onglet pendant la question donne 0 point. */
   strict?: boolean;
+  /** 💀 Mort subite : bonne réponse ×1,5, mauvaise réponse −300. */
+  sudden?: boolean;
+  /** 🎰 Question à enjeu : chacun mise de 0 à 1 000 ; bonne réponse 500 + la mise, mauvaise −la mise. */
+  stake?: boolean;
 }
 
 export interface Question {
@@ -189,6 +193,10 @@ export interface PublicState {
   shell: { from: string; to: string } | null;
   /** Porteur de la couronne lourde cette semaine (bonus vitesse divisé par deux). */
   crownId: string | null;
+  /** Coups de main de la question en cours : qui a appelé qui (demandeur → aidant). */
+  helps: Record<string, string>;
+  /** Joueurs qui ont déjà utilisé leur coup de main dans cette partie. */
+  helpUsed: string[];
   /** Applaudimètre en direct (révélation d'un Mercredi musical). */
   applause: { avg: number; count: number } | null;
   presence: Player[];
@@ -244,7 +252,8 @@ export interface Sticker {
 }
 
 export type ClientMsg =
-  | { t: "answer"; qid: string; value: unknown }
+  | { t: "answer"; qid: string; value: unknown; stake?: number }
+  | { t: "help"; target: string }
   | { t: "react"; e?: string; sticker?: string; target?: string }
   | { t: "away" }
   | { t: "power"; kind: PowerKind }
@@ -255,6 +264,8 @@ export type ServerMsg =
   | { t: "state"; s: PublicState }
   | { t: "toast"; msg: string }
   | { t: "power"; kind: PowerKind; removed?: number[] }
+  /** Réponse privée au demandeur d'un coup de main : la réponse de l'aidant (ou en attente). */
+  | { t: "help"; helper: string; answered: boolean; pick?: unknown }
   | { t: "react"; playerId: string; e?: string; sticker?: string; target?: string }
   | { t: "stickers" }
   | { t: "error"; msg: string };

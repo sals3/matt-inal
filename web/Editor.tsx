@@ -191,6 +191,10 @@ function Editor() {
                     {q.type !== "music" && <label className="toggle"><input type="checkbox" checked={q.speedBonus} onChange={(e) => patchQ((x) => ({ ...x, speedBonus: e.target.checked }))} /> Bonus vitesse (200 pts max)</label>}
                     <label className="toggle"><input type="checkbox" checked={q.doublePoints} onChange={(e) => patchQ((x) => ({ ...x, doublePoints: e.target.checked }))} /> Points doubles</label>
                     <label className="toggle" title="Quitter le quiz pendant la question (ChatGPT, Google…) donne 0 point"><input type="checkbox" checked={!!q.data.strict} onChange={(e) => patchData({ strict: e.target.checked || undefined })} /> 🧠 Cerveau strict (pas d'IA)</label>
+                    {q.type !== "music" && <>
+                      <label className="toggle" title="Bonne réponse ×1,5, mauvaise réponse −300"><input type="checkbox" checked={!!q.data.sudden} onChange={(e) => patchData({ sudden: e.target.checked || undefined, stake: undefined })} /> 💀 Mort subite</label>
+                      <label className="toggle" title="Chacun mise de 0 à 1 000 : bonne réponse 500 + la mise, mauvaise −la mise"><input type="checkbox" checked={!!q.data.stake} onChange={(e) => patchData({ stake: e.target.checked || undefined, sudden: undefined })} /> 🎰 Question à enjeu</label>
+                    </>}
                   </div>
                   <div className="row ed-actions">
                     <button className="btn ghost sm" onClick={() => move(-1)} disabled={qi === 0}>Monter</button>

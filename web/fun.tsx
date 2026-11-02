@@ -110,13 +110,64 @@ export function ShellBanner({ s }: { s: PublicState }) {
   );
 }
 
-/** Qui a sorti quoi, pendant la question. */
+/** Qui a sorti quoi, et qui a appelé qui à l'aide, pendant la question. */
 export function PowerLine({ s }: { s: PublicState }) {
   const used = Object.entries(s.powers);
-  if (!used.length) return null;
+  const helps = Object.entries(s.helps ?? {});
+  if (!used.length && !helps.length) return null;
   return (
     <div className="power-line">
       {used.map(([id, k]) => <span key={id} className="pill"><span aria-hidden="true">{POWERS[k].emoji}</span>{s.players[id]?.name}</span>)}
+      {helps.map(([req, helper]) => <span key={req} className="pill"><span aria-hidden="true">🤝</span>{s.players[req]?.name} → {s.players[helper]?.name}</span>)}
+    </div>
+  );
+}
+
+/* ======================= Jeux télé ======================= */
+
+/** 🎰 Question à enjeu : la mise se choisit avant de répondre. */
+export function StakePicker({ stake, setStake, disabled }: { stake: number; setStake: (n: number) => void; disabled: boolean }) {
+  return (
+    <div className="stake">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <label htmlFor="stake" className="flabel">🎰 Ta mise</label>
+        <b className="stake-val mono">{stake.toLocaleString("fr-CA")} pts</b>
+      </div>
+      <input id="stake" className="range" type="range" min={0} max={1000} step={50} value={stake} disabled={disabled} onChange={(e) => setStake(Number(e.target.value))} />
+      <span className="muted small">Bonne réponse : 500 + ta mise. Mauvaise réponse : tu perds ta mise.</span>
+    </div>
+  );
+}
+
+/** 🤝 Coup de main en duo : une fois par partie, tu vois la réponse d'un coéquipier. */
+export function HelpBox({ s, meId, q, done, onAsk, onHelp }: {
+  s: PublicState; meId: string; q: Question; done: boolean;
+  onAsk: (target: string) => void; onHelp: (f: (h: { helper: string; answered: boolean; pick?: unknown }) => void) => () => void;
+}) {
+  const [target, setTarget] = useState("");
+  const [seen, setSeen] = useState<{ helper: string; answered: boolean; pick?: unknown } | null>(null);
+  useEffect(() => onHelp(setSeen), [onHelp]);
+  const helper = s.helps?.[meId];
+  if (q.type === "music") return null;
+  if (helper) {
+    const name = s.players[helper]?.name ?? "Ton coéquipier";
+    const pick = seen?.helper === helper && seen.answered ? seen.pick : undefined;
+    const label = typeof pick === "number" && q.data.choices ? `${["▲", "●", "■", "◆"][pick]} ${q.data.choices[pick]}` : pick !== undefined ? String(pick) : null;
+    return <div className="help-box"><span aria-hidden="true">🤝</span>{label ? <span><b>{name}</b> a choisi : <b>{label}</b></span> : <span><b>{name}</b> réfléchit… sa réponse s'affichera ici.</span>}</div>;
+  }
+  if (done || s.helpUsed?.includes(meId)) return null;
+  const mates = s.presence.filter((p) => p.id !== meId && p.id !== q.authorId);
+  if (!mates.length) return null;
+  return (
+    <div className="help-box ask">
+      <label htmlFor="help-who" className="small"><b>🤝 Coup de main</b> (1 par partie) : vois la réponse d'un coéquipier. S'il a raison avec toi, il gagne +100.</label>
+      <div className="row">
+        <select id="help-who" className="input" value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">Choisis qui appeler…</option>
+          {mates.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button className="btn sm" disabled={!target} onClick={() => onAsk(target)}>Appeler à l'aide</button>
+      </div>
     </div>
   );
 }

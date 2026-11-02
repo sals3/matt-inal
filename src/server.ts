@@ -19,7 +19,11 @@ const store = openStore(DB_PATH, dayStr());
 
 type WsData = { player: Player | null; isAdmin: boolean };
 let server: ReturnType<typeof Bun.serve<WsData, any>>;
-const game = new Game(store, (msg) => server?.publish("game", JSON.stringify(msg)));
+const game = new Game(
+  store,
+  (msg) => server?.publish("game", JSON.stringify(msg)),
+  (playerId, msg) => server?.publish(`p:${playerId}`, JSON.stringify(msg)),
+);
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const fail = (error: string, status = 400) => json({ error }, status);
@@ -65,6 +69,11 @@ function cleanQuestion(raw: any): Question | null {
     if (raw.type !== "majority") data.correct = Math.min(n - 1, Math.max(0, Math.trunc(num(d.correct, 0))));
   }
   if (d.strict) data.strict = true;
+  // Mort subite et question à enjeu : pas au Mercredi musical, et jamais les deux à la fois.
+  if (raw.type !== "music") {
+    if (d.stake) data.stake = true;
+    else if (d.sudden) data.sudden = true;
+  }
   return {
     id: clean(raw.id, 32),
     type: raw.type,
@@ -373,7 +382,7 @@ server = Bun.serve<WsData, any>({
   websocket: {
     open(ws: ServerWebSocket<WsData>) {
       ws.subscribe("game");
-      if (ws.data.player) game.join(ws.data.player);
+      if (ws.data.player) { ws.subscribe(`p:${ws.data.player.id}`); game.join(ws.data.player); }
       ws.send(JSON.stringify({ t: "state", s: game.state() } satisfies ServerMsg));
     },
     message(ws: ServerWebSocket<WsData>, raw) {
@@ -381,7 +390,8 @@ server = Bun.serve<WsData, any>({
       try { msg = JSON.parse(String(raw)); } catch { return; }
       const reply = (err: string | null) => { if (err) ws.send(JSON.stringify({ t: "error", msg: err } satisfies ServerMsg)); };
       const me = ws.data.player;
-      if (msg.t === "answer" && me) reply(game.answer(me, String(msg.qid), msg.value));
+      if (msg.t === "answer" && me) reply(game.answer(me, String(msg.qid), msg.value, msg.stake));
+      else if (msg.t === "help" && me) reply(game.help(me, String(msg.target)));
       else if (msg.t === "react" && me) game.react(me.id, msg);
       else if (msg.t === "away" && me) game.markAway(me);
       else if (msg.t === "power" && me) {

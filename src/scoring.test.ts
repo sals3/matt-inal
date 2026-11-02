@@ -153,6 +153,24 @@ describe("power-ups", () => {
   });
 });
 
+describe("jeux télé", () => {
+  test("💀 mort subite : ×1,5 si bonne réponse, −300 sinon", () => {
+    const r = scoreQuestion(q({ speedBonus: false, data: { choices: ["a", "b", "c", "d"], correct: 1, sudden: true } }), [
+      { playerId: "ok", value: 1, at: 0 },
+      { playerId: "ko", value: 0, at: 0 },
+    ]);
+    expect(r.points).toEqual({ ok: 1650, ko: -300 });
+  });
+  test("🎰 question à enjeu : 500 + la mise si bonne réponse, −la mise sinon, mise plafonnée à 1 000", () => {
+    const r = scoreQuestion(q({ data: { choices: ["a", "b", "c", "d"], correct: 1, stake: true } }), [
+      { playerId: "audace", value: 1, at: 0, stake: 5000 },
+      { playerId: "prudent", value: 1, at: 0 },
+      { playerId: "perdu", value: 2, at: 0, stake: 400 },
+    ]);
+    expect(r.points).toEqual({ audace: 1500, prudent: 500, perdu: -400 });
+  });
+});
+
 describe("semaines", () => {
   test("le lundi de la semaine", () => {
     expect(mondayOf("2026-10-29")).toBe("2026-10-26");

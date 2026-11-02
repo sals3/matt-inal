@@ -8,6 +8,10 @@ export const BRAIN_BONUS = 100;
 export const FREEZE_MS = 10_000;
 export const DOUBLE_PENALTY = 300;
 export const AUTHOR_BONUS = 300;
+export const SUDDEN_PENALTY = 300;
+export const STAKE_MAX = 1000;
+export const STAKE_BASE = 500;
+export const HELP_BONUS = 100;
 
 export interface RawAnswer {
   playerId: string;
@@ -24,6 +28,8 @@ export interface RawAnswer {
   shelled?: boolean;
   /** 👑 Couronne lourde : bonus vitesse divisé par deux. */
   crowned?: boolean;
+  /** 🎰 Mise de la question à enjeu (0 à 1 000). */
+  stake?: number;
 }
 
 /** Une question de l'équipe est « bien dosée » si 30 à 70 % des joueurs trouvent. */
@@ -151,6 +157,16 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
     if (a.shelled) detail[id] += " · 💙 Touché par la carapace bleue";
     if (a.freeze) detail[id] += " · ⏸️ Gel du chrono";
     if (a.crowned && q.speedBonus) detail[id] += " · 👑 Couronne lourde";
+    const won = (points[id] ?? 0) > 0;
+    if (q.data.stake) {
+      // La mise remplace le pointage habituel (vitesse comprise) ; la prime cerveau et la carapace n'y changent rien.
+      const stake = Math.max(0, Math.min(STAKE_MAX, Math.round(a.stake ?? 0)));
+      points[id] = won ? STAKE_BASE + stake : -stake;
+      detail[id] += won ? ` · 🎰 Mise gagnée (+${stake})` : ` · 🎰 Mise perdue (−${stake})`;
+    } else if (q.data.sudden) {
+      points[id] = won ? Math.round(points[id]! * 1.5) : -SUDDEN_PENALTY;
+      detail[id] += won ? " · 💀 Survivant (×1,5)" : " · 💀 Mort subite (−300)";
+    }
     if (a.double) {
       if (points[id]! > 0) { points[id]! *= 2; detail[id] += " · 🍄 Double!"; }
       else { points[id] = -DOUBLE_PENALTY; detail[id] += " · 🍄 Double ou rien… rien"; }

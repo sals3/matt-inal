@@ -512,6 +512,16 @@ button.tile:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tcd);
 button.rcode { cursor: copy; }
 .center-link { text-align: center; margin-top: -8px; }
 
+/* Jeux télé : mort subite, question à enjeu, coup de main */
+.pill.danger-pill { background: var(--bad-soft); color: var(--bad); }
+.sudden-note { background: var(--bad-soft); border-radius: 12px; padding: 10px 14px; font-size: 14px; animation: pop .3s ease-out both; }
+.stake { display: grid; gap: 6px; background: var(--sun-soft); border-radius: 14px; padding: 12px 14px; }
+.stake-val { font-size: 22px; color: var(--sun); }
+.help-box { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--surface-2); border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+.help-box.ask { display: grid; gap: 8px; }
+.help-box .input { width: auto; flex: 1 1 160px; }
+.music .stake, .music .help-box, .music .sudden-note { color: var(--ink); }
+
 /* Ménage */
 .linkish.danger, .btn.ghost.danger { color: var(--bad); }
 .btn.danger:not(.ghost) { background: var(--bad); color: #FFF; box-shadow: 0 3px 0 color-mix(in srgb, var(--bad) 60%, #000); }

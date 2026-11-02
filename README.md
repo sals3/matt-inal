@@ -28,6 +28,10 @@ Le quiz du standup de l'équipe de Matt. Matt prépare ses questions, les partag
   | Dernier | + 💙 Carapace bleue : le premier perd son bonus vitesse pour la question |
 
   Un seul power-up par question, annoncé en direct à toute l'équipe. Matt peut redistribuer les boîtes dans `#/equipe` (après une fin de saison, par exemple).
+- **Jeux télé** :
+  - 💀 **Mort subite** (case dans l'éditeur) : bonne réponse ×1,5, mauvaise réponse −300.
+  - 🎰 **Question à enjeu** (case dans l'éditeur) : chacun mise de 0 à 1 000 ; bonne réponse 500 + la mise, mauvaise −la mise.
+  - 🤝 **Coup de main en duo** : une fois par partie, un joueur voit la réponse d'un coéquipier (en privé) ; si les deux ont raison, l'aidant gagne +100.
 - **Boîte à questions** : n'importe qui propose une question ; Matt l'ajoute à un quiz depuis l'éditeur. L'auteur ne peut pas y répondre, mais gagne 300 pts si 30 à 70 % de l'équipe trouve.
 - **Trophées de la semaine** : ⚡ Le Flash, 🥈 Le Roi du presque, 🎯 Le Métronome, 🧠 Le Cerveau, 🚀 La Remontée, 💙 Le Saboteur, 🏮 La Lanterne rouge.
 - **Applaudimètre** : après chaque Mercredi musical, l'équipe note Matt sur 5 étoiles ; ses meilleures performances entrent dans son palmarès.

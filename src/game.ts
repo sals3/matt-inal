@@ -1,5 +1,5 @@
 import type { Store } from "./db";
-import { authorBonus, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
+import { authorBonus, HELP_BONUS, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
 import {
   dayStr, mondayOf, POWERS, powerFits, REACTIONS,
   type Phase, type Player, type PowerKind, type PublicState, type Question, type Quiz, type Reveal, type ServerMsg,
@@ -33,6 +33,10 @@ export class Game {
   /** Un seul power-up par joueur et par question. */
   powerUse = new Map<string, PowerKind>();
   shell: { from: string; to: string } | null = null;
+  /** 🤝 Coups de main de la question en cours : demandeur → aidant. */
+  helps = new Map<string, string>();
+  /** Un coup de main par joueur et par partie. */
+  helpUsed = new Set<string>();
   week = "";
   crownId: string | null = null;
   applause: { avg: number; count: number } | null = null;
@@ -43,7 +47,12 @@ export class Game {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private lastReact = new Map<string, number>();
 
-  constructor(private store: Store, private publish: (msg: ServerMsg) => void) {}
+  constructor(
+    private store: Store,
+    private publish: (msg: ServerMsg) => void,
+    /** Message privé à un joueur (tous ses onglets). */
+    private publishTo: (playerId: string, msg: ServerMsg) => void = () => {},
+  ) {}
 
   get question(): Question | null {
     return this.quiz?.questions[this.qIndex] ?? null;
@@ -69,6 +78,8 @@ export class Game {
       away: [...this.away],
       powers: Object.fromEntries(this.powerUse),
       shell: this.shell,
+      helps: Object.fromEntries(this.helps),
+      helpUsed: [...this.helpUsed],
       crownId: this.crownId,
       applause: this.phase === "reveal" && q?.type === "music" ? this.applause : null,
       presence: [...this.presence.values()].map((p) => p.player),
@@ -117,6 +128,7 @@ export class Game {
     this.participants = new Map([...this.presence.values()].map((p) => [p.player.id, p.player]));
     this.week = mondayOf(dayStr());
     this.crownId = this.store.crownId(this.week);
+    this.helpUsed = new Set();
     this.gameId = this.store.createGame(quiz.id, quiz.day);
     this.broadcast();
     return null;
@@ -134,7 +146,9 @@ export class Game {
   private startQuestion(i: number) {
     this.clearTimers();
     const q = this.quiz!.questions[i]!;
-    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
+    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), helps: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
+    if (q.data.sudden) this.toast("💀 Mort subite! Bonne réponse ×1,5, mauvaise réponse −300.");
+    if (q.data.stake) this.toast("🎰 Question à enjeu! Fais ta mise avant de répondre.");
     this.startedAt = Date.now();
     this.deadline = this.startedAt + q.timeLimit * 1000;
     this.timers.push(setTimeout(() => this.doReveal(), q.timeLimit * 1000 + GRACE_MS));
@@ -148,7 +162,7 @@ export class Game {
     this.broadcast();
   }
 
-  answer(player: Player, qid: string, value: unknown): string | null {
+  answer(player: Player, qid: string, value: unknown, stake?: unknown): string | null {
     const q = this.question;
     if (this.phase !== "question" || !q || q.id !== qid) return "Trop tard pour cette question.";
     if (q.authorId === player.id) return "C'est ta question! Tu regardes les autres suer.";
@@ -157,8 +171,13 @@ export class Game {
     if (at > q.timeLimit * 1000 + GRACE_MS) return "Le temps est écoulé.";
     const v = validAnswer(q, value);
     if (v === undefined) return "Réponse invalide.";
-    this.answers.set(player.id, { playerId: player.id, value: v, at, away: this.away.has(player.id) });
+    const s = Number(stake);
+    this.answers.set(player.id, { playerId: player.id, value: v, at, away: this.away.has(player.id), stake: q.data.stake && Number.isFinite(s) ? s : undefined });
     this.participants.set(player.id, player);
+    // Ceux qui ont appelé ce joueur à l'aide voient sa réponse tout de suite.
+    for (const [req, helper] of this.helps) {
+      if (helper === player.id) this.publishTo(req, { t: "help", helper: player.id, answered: true, pick: v });
+    }
     // Tout le monde a répondu (sauf l'auteur de la question) : on révèle sans attendre la fin du chrono.
     const expected = [...this.presence.keys()].filter((id) => id !== q.authorId);
     if (expected.length > 0 && expected.every((id) => this.answers.has(id))) this.timers.push(setTimeout(() => this.doReveal(), 900));
@@ -178,6 +197,16 @@ export class Game {
       crowned: this.crownId === a.playerId,
     }));
     const reveal = scoreQuestion(q, answers);
+    // 🤝 Coup de main réussi : les deux ont raison, l'aidant gagne +100.
+    for (const [req, helper] of this.helps) {
+      const helperName = this.participants.get(helper)?.name ?? "un coéquipier";
+      const reqName = this.participants.get(req)?.name ?? "un coéquipier";
+      if (reveal.detail[req] !== undefined) reveal.detail[req] += ` · 🤝 Aidé par ${helperName}`;
+      if ((reveal.points[req] ?? 0) > 0 && (reveal.points[helper] ?? 0) > 0) {
+        reveal.points[helper]! += HELP_BONUS;
+        reveal.detail[helper] += ` · 🤝 Coup de main à ${reqName} (+${HELP_BONUS})`;
+      }
+    }
     if (q.authorId && this.quiz) {
       const { bonus, rate } = authorBonus(reveal.points);
       reveal.author = { id: q.authorId, bonus, rate };
@@ -249,6 +278,27 @@ export class Game {
     }
     this.broadcast();
     return { removed };
+  }
+
+  /* ----- Coup de main en duo (l'appel à un ami) ----- */
+  help(player: Player, targetId: string): string | null {
+    const q = this.question;
+    if (this.phase !== "question" || !q) return "Le coup de main se demande pendant une question.";
+    if (q.type === "music") return "Pas de coup de main au Mercredi musical : c'est entre toi et ton oreille.";
+    if (q.authorId === player.id) return "C'est ta question!";
+    if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
+    if (this.helpUsed.has(player.id)) return "T'as déjà utilisé ton coup de main dans cette partie.";
+    const target = this.presence.get(targetId)?.player;
+    if (!target || target.id === player.id) return "Choisis un coéquipier connecté.";
+    if (q.authorId === target.id) return `${target.name} ne peut pas répondre : c'est sa question!`;
+    this.helpUsed.add(player.id);
+    this.helps.set(player.id, target.id);
+    this.participants.set(player.id, player);
+    const done = this.answers.get(target.id);
+    this.publishTo(player.id, { t: "help", helper: target.id, answered: !!done, pick: done?.value });
+    this.toast(`🤝 ${player.name} appelle ${target.name} à l'aide!`);
+    this.broadcast();
+    return null;
   }
 
   /* ----- Applaudimètre ----- */

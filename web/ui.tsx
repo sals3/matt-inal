@@ -77,6 +77,8 @@ export function QHead({ s, right }: { s: PublicState; right?: ReactNode }) {
       <span className="row" style={{ gap: 6 }}>
         <span className="pill">Question {s.qIndex + 1} / {s.qCount} · {TYPE_LABEL[q.type]}</span>
         {q.doublePoints && <span className="pill warn">Points ×2</span>}
+        {q.data.sudden && <span className="pill danger-pill" title="Bonne réponse ×1,5, mauvaise réponse −300">💀 Mort subite</span>}
+        {q.data.stake && <span className="pill warn" title="Mise de 0 à 1 000 : bonne réponse 500 + la mise, mauvaise −la mise">🎰 Question à enjeu</span>}
         {q.data.strict && <span className="pill brain" title="Quitter le quiz pendant la question donne 0 point">🧠 Cerveau strict</span>}
       </span>
       {right}

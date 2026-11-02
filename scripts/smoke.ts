@@ -2,7 +2,7 @@
 // stickers, sortie d'onglet, gravure de la Coupe. Ne jamais lancer contre la production
 // (le test termine la saison en cours).
 // Usage : ADMIN_PIN=… TEAM_CODE=MATIN bun scripts/smoke.ts   (base de données vierge recommandée)
-import type { Performance, Player, PowerInventory, PublicState, Season, ServerMsg, Submission, WeekDistribution, WeekTrophies } from "../src/shared";
+import type { Performance, Player, PowerInventory, PublicState, Question, Season, ServerMsg, Submission, WeekDistribution, WeekTrophies } from "../src/shared";
 import { addDays, dayStr } from "../src/shared";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -26,12 +26,14 @@ function client(query: string) {
   const reacts: Extract<ServerMsg, { t: "react" }>[] = [];
   const powers: Extract<ServerMsg, { t: "power" }>[] = [];
   const errors: string[] = [];
+  const helpMsgs: Extract<ServerMsg, { t: "help" }>[] = [];
   const waiters: { pred: (s: PublicState) => boolean; resolve: (s: PublicState) => void }[] = [];
   ws.onmessage = (ev) => {
     const m = JSON.parse(String(ev.data)) as ServerMsg;
     if (m.t === "error") errors.push(m.msg);
     if (m.t === "react") reacts.push(m);
     if (m.t === "power") powers.push(m);
+    if (m.t === "help") helpMsgs.push(m);
     if (m.t !== "state") return;
     last = m.s;
     for (const w of [...waiters]) if (w.pred(m.s)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(m.s); }
@@ -43,7 +45,7 @@ function client(query: string) {
       setTimeout(() => reject(new Error("délai dépassé")), ms);
     });
   const open = new Promise((r) => (ws.onopen = r));
-  return { ws, until, open, reacts, powers, errors, send: (m: unknown) => ws.send(JSON.stringify(m)) };
+  return { ws, until, open, reacts, powers, errors, helpMsgs, send: (m: unknown) => ws.send(JSON.stringify(m)) };
 }
 
 const admin = (await call<{ token: string }>("/api/admin/login", { method: "POST", json: { pin: PIN } })).token;
@@ -207,6 +209,52 @@ await host.until((x) => x.phase === "podium");
 host.send({ t: "host", action: "close" });
 await host.until((x) => x.phase === "idle");
 
+// ---------- Troisième partie : mort subite, coup de main, question à enjeu ----------
+const day3 = addDays(dayStr(), 2);
+const quiz3 = await call<{ id: string; questions: Question[] }>(`/api/quizzes/${day3}`, {
+  method: "PUT", headers: A, json: {
+    theme: "Jeux télé", status: "ready", questions: [
+      { type: "mc", prompt: "Plus haut sommet du Québec?", emoji: "⛰️", timeLimit: 20, data: { choices: ["Mont D'Iberville", "Mont Tremblant", "Mont Royal", "Mont Albert"], correct: 0, sudden: true } },
+      { type: "mc", prompt: "Combien de provinces au Canada?", emoji: "🍁", timeLimit: 20, data: { choices: ["8", "10", "12", "13"], correct: 1, stake: true } },
+    ],
+  },
+});
+assert(quiz3.questions[0]!.data.sudden && quiz3.questions[1]!.data.stake, "Matt marque une mort subite et une question à enjeu");
+host.send({ t: "host", action: "open", quizId: quiz3.id });
+await host.until((x) => x.phase === "lobby");
+
+// Q1 : mort subite. Émilie appelle Julie à l'aide avant de répondre.
+host.send({ t: "host", action: "next" });
+s = await emilie.until((x) => x.phase === "question" && x.qIndex === 0);
+emilie.send({ t: "help", target: julie.id });
+await host.until((x) => x.helps[emilie.id] === julie.id);
+julie.send({ t: "answer", qid: s.question!.id, value: 0 });
+await Bun.sleep(300);
+assert(emilie.helpMsgs.some((h) => h.helper === julie.id && h.answered && h.pick === 0), "🤝 Émilie voit la réponse de Julie dès qu'elle répond, en privé");
+assert(!kevin.helpMsgs.length, "personne d'autre ne voit la réponse de Julie");
+emilie.send({ t: "answer", qid: s.question!.id, value: 0 });
+kevin.send({ t: "answer", qid: s.question!.id, value: 2 });
+s = await host.until((x) => x.phase === "reveal" && x.qIndex === 0);
+assert(s.reveal!.points[kevin.id] === -300, "💀 mort subite : mauvaise réponse −300");
+const j1 = s.reveal!.points[julie.id]!, e1b = s.reveal!.points[emilie.id]!;
+assert(j1 >= 1650 + 100 && e1b >= 1650 - 300, `💀 bonnes réponses ×1,5 ; 🤝 Julie gagne +100 pour son coup de main (${j1})`);
+
+// Q2 : question à enjeu.
+host.send({ t: "host", action: "next" });
+s = await julie.until((x) => x.phase === "question" && x.qIndex === 1);
+emilie.send({ t: "help", target: kevin.id });
+await Bun.sleep(200);
+assert(emilie.errors.some((e) => e.includes("déjà utilisé ton coup de main")), "un seul coup de main par partie");
+julie.send({ t: "answer", qid: s.question!.id, value: 1, stake: 1000 });
+kevin.send({ t: "answer", qid: s.question!.id, value: 0, stake: 200 });
+emilie.send({ t: "answer", qid: s.question!.id, value: 1 });
+s = await host.until((x) => x.phase === "reveal" && x.qIndex === 1);
+assert(s.reveal!.points[julie.id] === 1500 && s.reveal!.points[kevin.id] === -200 && s.reveal!.points[emilie.id] === 500, "🎰 enjeu : Julie mise 1 000 et gagne 1 500, Kevin perd sa mise de 200, Émilie sans mise gagne 500");
+host.send({ t: "host", action: "next" });
+await host.until((x) => x.phase === "podium");
+host.send({ t: "host", action: "close" });
+await host.until((x) => x.phase === "idle");
+
 const palm = await call<Performance[]>("/api/palmares", { headers: A });
 assert(palm[0]?.title === "Alouette" && palm[0].avg === 4.5, "la performance entre au palmarès de Matt");
 const tro = await call<{ current: WeekTrophies }>("/api/trophies", { headers: A });
@@ -230,8 +278,7 @@ assert(lb.cup.length === 3 && lb.season.num === 4, "la Coupe a 3 plaques et la s
 
 // Ménage : Matt supprime une partie, un joueur et un quiz de test.
 const games = await call<{ id: string; day: string }[]>("/api/games", { headers: A });
-const g2 = games.find((g) => g.day === day2)!;
-await call(`/api/games/${g2.id}`, { method: "DELETE", headers: A });
+for (const g of games.filter((g) => g.day > dayStr())) await call(`/api/games/${g.id}`, { method: "DELETE", headers: A });
 const lb4 = await call<{ standings: unknown[]; games: number }>(`/api/leaderboard`, { headers: A });
 assert(lb4.standings.length === 0 && lb4.games === 0, "partie supprimée : ses points sortent du classement");
 for (const c of [host, ...bots]) c.ws.close();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { type Player, type PowerKind, type PublicState } from "../src/shared";
-import { ApplauseStars, ItemBoxReveal, ItemsCard, PowerBar, PowerLine, RecoverForm, RecoveryBox, ShellBanner, SubmitQuestion, useInventory } from "./fun";
+import { ApplauseStars, HelpBox, ItemBoxReveal, ItemsCard, PowerBar, PowerLine, RecoverForm, RecoveryBox, ShellBanner, StakePicker, SubmitQuestion, useInventory } from "./fun";
 import { api, auth, AVATARS, COLORS, confetti, frDay, fmt, ord, sfx, signed, toast, uploadImage, useAwayWatch, useCountdown, useGame } from "./lib";
 import { Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, SHAPE_NAMES, TeaseBar, Timer, Visual } from "./ui";
 
@@ -197,7 +197,8 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
   const sec = Math.ceil(left / 1000);
   useEffect(() => { if (sec !== lastSec.current) { lastSec.current = sec; if (sec <= 5 && sec > 0 && !done) sfx("tick"); } }, [sec, done]);
 
-  const answer = (value: unknown) => { if (done) return; g.send({ t: "answer", qid: q.id, value }); sfx("lock"); };
+  const [stake, setStake] = useState(0);
+  const answer = (value: unknown) => { if (done) return; g.send({ t: "answer", qid: q.id, value, ...(q.data.stake ? { stake } : {}) }); sfx("lock"); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).matches("input, textarea, select")) return;
@@ -221,6 +222,8 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
       {tip && !mine && <p className="muted small">{tip}</p>}
       {q.authorId && !mine && s.players[q.authorId] && <p className="small author-line">📬 Question proposée par <b>{s.players[q.authorId]!.name}</b></p>}
 
+      {q.data.sudden && !mine && !done && <p className="sudden-note">💀 <b>Mort subite</b> : bonne réponse ×1,5, mauvaise réponse −300. Dans le doute, tu peux ne pas répondre.</p>}
+      {q.data.stake && !mine && <StakePicker stake={stake} setStake={setStake} disabled={done} />}
       {mine ? (
         <div className="own-q"><span className="big-emoji">🍿</span><p><b>C'est ta question!</b> Tu ne peux pas y répondre. Si 30 à 70 % de l'équipe trouve, tu gagnes 300 pts. Croise les doigts.</p></div>
       ) : q.type === "closest" ? (
@@ -255,6 +258,7 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
       )}
 
       {!mine && left > 0 && <PowerBar inv={inv} q={q} used={s.powers[me.id]} answered={answered} onUse={usePower} />}
+      {!mine && left > 0 && <HelpBox s={s} meId={me.id} q={q} done={done} onAsk={(target) => g.send({ t: "help", target })} onHelp={g.onHelp} />}
       <PowerLine s={s} />
       {wentAway && !done && <p className="robots">🤖 T'as quitté le quiz : l'équipe le sait{q.data.strict ? ", et en mode cerveau strict, cette question vaut 0." : ". Bonne réponse quand même, mais sans bonus vitesse ni prime cerveau."}</p>}
       {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur le quiz (cet onglet, cette fenêtre) jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter le quiz donne 0." : ""}</p>}
