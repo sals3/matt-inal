@@ -47,7 +47,13 @@ export function Visual({ q, zoom = 1, blur = 0, small = false, tag = "Matt · or
   return (
     <div className={`qv ${img ? "" : BG[q.type]}${small ? " small" : ""}`}>
       {q.type === "music" ? <Equalizer bars={small ? 14 : 22} mini={small} />
-        : img ? <div className="bgimg" style={{ ...style, backgroundImage: `url(/media/${q.imageId})` }} />
+        : img ? (
+          <>
+            {/* L'image entière, jamais recadrée ; la même image floutée remplit les côtés. */}
+            <div className="bgfill" style={{ backgroundImage: `url(/media/${q.imageId})` }} aria-hidden="true" />
+            <div className="bgimg" style={{ ...style, backgroundImage: `url(/media/${q.imageId})` }} />
+          </>
+        )
         : <span className="big" style={style}>{q.emoji}</span>}
       <svg className="matt" viewBox="0 0 120 110" aria-hidden="true"><circle cx="60" cy="38" r="22" /><path d="M12 110c4-28 24-44 48-44s44 16 48 44z" /></svg>
       <span className="tag">{MIC} {tag}</span>
