@@ -73,6 +73,14 @@ for (const name of names) {
 }
 const [julie, kevin, emilie] = bots as [typeof bots[0], typeof bots[0], typeof bots[0]];
 const P = (b: typeof julie) => ({ authorization: `Bearer ${b.token}` });
+/** Position d'un choix : l'ordre est mélangé à chaque partie. */
+const pick = (st: PublicState, label: string) => st.question!.data.choices!.indexOf(label);
+
+// Pseudos uniques : pas de sosie du premier.
+const refused = async (path: string, init: Parameters<typeof call>[1]) => { try { await call(path, init); return false; } catch (e) { return String(e).includes("409"); } };
+assert(await refused("/api/join", { method: "POST", json: { teamCode: TEAM, name: "robot JULIE", emoji: "🤡", color: "#000" } }), "pseudo en double refusé à l'inscription (casse)");
+assert(await refused("/api/join", { method: "POST", json: { teamCode: TEAM, name: "Rоbot Julie", emoji: "🤡", color: "#000" } }), "pseudo sosie refusé (o cyrillique)");
+assert(await refused("/api/me", { method: "PATCH", headers: P(emilie), json: { name: "Robot Julié", emoji: "🤖", color: "#4655C8", avatarId: null } }), "renommer en pseudo pris : refusé");
 
 // Code de récupération : on se reconnecte sur un « autre appareil ».
 const { code } = await call<{ code: string }>("/api/me/recovery", { headers: P(kevin) });
@@ -100,9 +108,9 @@ await host.until((s) => s.phase === "lobby");
 host.send({ t: "host", action: "next" });
 let s = await julie.until((x) => x.phase === "question" && x.qIndex === 0);
 assert(s.question?.data.correct === undefined, "la bonne réponse n'est pas envoyée aux joueurs avant la révélation");
-julie.send({ t: "answer", qid: s.question!.id, value: 0 });
-kevin.send({ t: "answer", qid: s.question!.id, value: 3 });
-emilie.send({ t: "answer", qid: s.question!.id, value: 0 });
+julie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Beigne") });
+kevin.send({ t: "answer", qid: s.question!.id, value: pick(s, "Pneu") });
+emilie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Beigne") });
 s = await host.until((x) => x.phase === "reveal" && x.qIndex === 0);
 assert(s.reveal!.points[julie.id]! > 1100 && s.reveal!.points[kevin.id] === 0, "révélation automatique, bonne réponse + vitesse + prime cerveau");
 
@@ -167,14 +175,14 @@ await host.until((x) => x.phase === "lobby" && x.crownId === emilie.id);
 host.send({ t: "host", action: "next" });
 s = await kevin.until((x) => x.phase === "question" && x.qIndex === 0);
 assert(s.question!.authorId === julie.id, "la question est signée Julie");
-julie.send({ t: "answer", qid: s.question!.id, value: 1 });
+julie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Canberra") });
 kevin.send({ t: "power", kind: "double" });
 await host.until((x) => x.powers[kevin.id] === "double");
 kevin.send({ t: "power", kind: "shell" });
 await Bun.sleep(200);
 assert(julie.errors.some((e) => e.includes("ta question")) && kevin.errors.some((e) => e.includes("Un seul power-up")), "Julie ne peut pas répondre à sa question ; un seul power-up par question");
-kevin.send({ t: "answer", qid: s.question!.id, value: 0 });
-emilie.send({ t: "answer", qid: s.question!.id, value: 1 });
+kevin.send({ t: "answer", qid: s.question!.id, value: pick(s, "Sydney") });
+emilie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Canberra") });
 s = await host.until((x) => x.phase === "reveal" && x.qIndex === 0);
 assert(s.reveal!.points[kevin.id] === -300, "🍄 Double ou rien… rien : Kevin perd 300");
 assert(s.reveal!.author?.id === julie.id && s.reveal!.author.bonus === 300, "question bien dosée (50 %) : Julie gagne 300");
@@ -190,8 +198,8 @@ assert(s.shell?.from === kevin.id, "💙 Kevin lance la carapace bleue sur Émil
 julie.send({ t: "power", kind: "fifty" });
 await Bun.sleep(200);
 const removed = julie.powers.find((p) => p.kind === "fifty")?.removed ?? [];
-assert(removed.length === 2 && !removed.includes(1), "🎯 50/50 : deux mauvaises réponses retirées, en privé pour Julie");
-for (const b of bots) b.send({ t: "answer", qid: s.question!.id, value: 1 });
+assert(removed.length === 2 && !removed.includes(pick(s, "8")), "🎯 50/50 : deux mauvaises réponses retirées, en privé pour Julie");
+for (const b of bots) b.send({ t: "answer", qid: s.question!.id, value: pick(s, "8") });
 s = await host.until((x) => x.phase === "reveal" && x.qIndex === 1);
 assert(s.reveal!.points[emilie.id] === 1100, "Émilie touchée : plus de bonus vitesse (1 100)");
 
@@ -228,12 +236,12 @@ host.send({ t: "host", action: "next" });
 s = await emilie.until((x) => x.phase === "question" && x.qIndex === 0);
 emilie.send({ t: "help", target: julie.id });
 await host.until((x) => x.helps[emilie.id] === julie.id);
-julie.send({ t: "answer", qid: s.question!.id, value: 0 });
+julie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Mont D'Iberville") });
 await Bun.sleep(300);
-assert(emilie.helpMsgs.some((h) => h.helper === julie.id && h.answered && h.pick === 0), "🤝 Émilie voit la réponse de Julie dès qu'elle répond, en privé");
+assert(emilie.helpMsgs.some((h) => h.helper === julie.id && h.answered && h.pick === pick(s, "Mont D'Iberville")), "🤝 Émilie voit la réponse de Julie dès qu'elle répond, en privé");
 assert(!kevin.helpMsgs.length, "personne d'autre ne voit la réponse de Julie");
-emilie.send({ t: "answer", qid: s.question!.id, value: 0 });
-kevin.send({ t: "answer", qid: s.question!.id, value: 2 });
+emilie.send({ t: "answer", qid: s.question!.id, value: pick(s, "Mont D'Iberville") });
+kevin.send({ t: "answer", qid: s.question!.id, value: pick(s, "Mont Royal") });
 s = await host.until((x) => x.phase === "reveal" && x.qIndex === 0);
 assert(s.reveal!.points[kevin.id] === -300, "💀 mort subite : mauvaise réponse −300");
 const j1 = s.reveal!.points[julie.id]!, e1b = s.reveal!.points[emilie.id]!;
@@ -245,9 +253,9 @@ s = await julie.until((x) => x.phase === "question" && x.qIndex === 1);
 emilie.send({ t: "help", target: kevin.id });
 await Bun.sleep(200);
 assert(emilie.errors.some((e) => e.includes("déjà utilisé ton coup de main")), "un seul coup de main par partie");
-julie.send({ t: "answer", qid: s.question!.id, value: 1, stake: 1000 });
-kevin.send({ t: "answer", qid: s.question!.id, value: 0, stake: 200 });
-emilie.send({ t: "answer", qid: s.question!.id, value: 1 });
+julie.send({ t: "answer", qid: s.question!.id, value: pick(s, "10"), stake: 1000 });
+kevin.send({ t: "answer", qid: s.question!.id, value: pick(s, "8"), stake: 200 });
+emilie.send({ t: "answer", qid: s.question!.id, value: pick(s, "10") });
 s = await host.until((x) => x.phase === "reveal" && x.qIndex === 1);
 assert(s.reveal!.points[julie.id] === 1500 && s.reveal!.points[kevin.id] === -200 && s.reveal!.points[emilie.id] === 500, "🎰 enjeu : Julie mise 1 000 et gagne 1 500, Kevin perd sa mise de 200, Émilie sans mise gagne 500");
 host.send({ t: "host", action: "next" });

@@ -15,6 +15,22 @@ function sanitize(q: Question, hintsShown: number, revealed: boolean): Question 
   return { ...q, data: { ...safe, hints: (hints ?? []).filter((h) => h && h.trim()).slice(0, hintsShown) } };
 }
 
+/** Types dont on mélange les choix à chaque partie (vrai ou faux garde son ordre). */
+const SHUFFLED = new Set(["mc", "zoom", "rebus", "majority"]);
+
+/** Mélange les choix : Matt entre la bonne réponse où il veut, sans créer de pattern. */
+export function shuffleChoices(q: Question, rand = Math.random): Question {
+  const choices = q.data.choices;
+  if (!SHUFFLED.has(q.type) || !choices || choices.length < 2) return q;
+  const order = choices.map((_, k) => k);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  const correct = q.data.correct === undefined ? undefined : order.indexOf(q.data.correct);
+  return { ...q, data: { ...q.data, choices: order.map((k) => choices[k]!), ...(correct === undefined ? {} : { correct }) } };
+}
+
 /**
  * Une seule partie en direct à la fois (une équipe, un standup).
  * L'état vit en mémoire ; les réponses notées sont écrites dans SQLite à chaque révélation.
@@ -120,8 +136,10 @@ export class Game {
 
   /* ----- Actions de Matt ----- */
   open(quizId: string): string | null {
-    const quiz = this.store.quizById(quizId);
-    if (!quiz) return "Quiz introuvable.";
+    const stored = this.store.quizById(quizId);
+    if (!stored) return "Quiz introuvable.";
+    // Même ordre pour tout le monde (et l'écran d'animation) pendant la partie.
+    const quiz = { ...stored, questions: stored.questions.map((q) => shuffleChoices(q)) };
     if (!quiz.questions.length) return "Ce quiz n'a pas encore de questions.";
     this.clearTimers();
     Object.assign(this, { quiz, phase: "lobby", qIndex: -1, totals: {}, reveal: null, answers: new Map(), startedAt: 0, deadline: 0 });

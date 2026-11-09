@@ -2,7 +2,7 @@ import type { ServerWebSocket } from "bun";
 import index from "../web/index.html";
 import { openStore } from "./db";
 import { Game } from "./game";
-import { addDays, dayStr, mondayOf, TYPES, type ClientMsg, type Player, type PowerKind, type Question, type QuizStatus, type ServerMsg } from "./shared";
+import { addDays, dayStr, mondayOf, nameKey, TYPES, type ClientMsg, type Player, type PowerKind, type Question, type QuizStatus, type ServerMsg } from "./shared";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const TEAM_CODE = (process.env.TEAM_CODE ?? "MATIN").trim().toUpperCase();
@@ -36,6 +36,8 @@ const isAdmin = (req: Request) => store.isAdmin(req.headers.get("x-admin") ?? ""
 const clean = (s: unknown, max: number) => String(s ?? "").trim().slice(0, max);
 const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const TAKEN = "Ce nom est déjà pris. Bien essayé 😏";
 
 function profile(b: Partial<{ name: string; emoji: string; color: string; avatarId: string | null }>) {
   const name = clean(b.name, 24);
@@ -101,6 +103,7 @@ server = Bun.serve<WsData, any>({
         if (clean(b.teamCode, 40).toUpperCase() !== TEAM_CODE) { await sleep(400); return fail("Ce n'est pas le bon code d'équipe.", 403); }
         const p = profile(b);
         if (!p) return fail("Choisis un nom.");
+        if (store.nameTaken(p.name)) return fail(TAKEN, 409);
         return json(store.createPlayer(p.name, p.emoji, p.color));
       },
     },
@@ -111,6 +114,7 @@ server = Bun.serve<WsData, any>({
         if (!me) return fail("Non connecté.", 401);
         const p = profile(await body(req));
         if (!p) return fail("Choisis un nom.");
+        if (nameKey(p.name) !== nameKey(me.name) && store.nameTaken(p.name, me.id)) return fail(TAKEN, 409);
         const updated = store.updatePlayer(me.id, p)!;
         game.rename(updated);
         return json(updated);
@@ -281,6 +285,7 @@ server = Bun.serve<WsData, any>({
         if (!store.player(req.params.id)) return fail("Joueur introuvable.", 404);
         const p = profile(await body(req));
         if (!p) return fail("Choisis un nom.");
+        if (store.nameTaken(p.name, req.params.id)) return fail(TAKEN, 409);
         const updated = store.updatePlayer(req.params.id, p)!;
         game.rename(updated);
         return json(updated);

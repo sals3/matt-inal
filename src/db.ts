@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  addDays, norm, POWERS, TIERS,
+  addDays, nameKey, norm, POWERS, TIERS,
   type Leaderboard, type Performance, type Player, type PowerInventory, type PowerKind, type PowerTier, type Question, type Quiz,
   type QuizStatus, type QuizSummary, type Season, type Standing, type Sticker, type Submission, type SubmissionStatus, type Trophy,
   type WeekDistribution, type WeekTrophies,
@@ -138,6 +138,11 @@ export class Store {
   updatePlayer(id: string, p: { name: string; emoji: string; color: string; avatarId: string | null }): Player | null {
     this.db.query("update players set name = ?, emoji = ?, color = ?, avatar_id = ? where id = ?").run(p.name, p.emoji, p.color, p.avatarId, id);
     return this.player(id);
+  }
+  /** Un pseudo déjà pris par quelqu'un d'autre (même en jouant sur les accents, la casse ou les sosies de lettres). */
+  nameTaken(name: string, exceptId?: string): boolean {
+    const key = nameKey(name);
+    return (this.db.query("select id, name from players").all() as Row[]).some((r) => r.id !== exceptId && nameKey(r.name) === key);
   }
   players(): Player[] {
     const champ = this.championId();

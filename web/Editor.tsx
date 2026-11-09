@@ -278,7 +278,7 @@ function Answers({ q, patchData, upload }: { q: Question; patchData: (d: Partial
   const maj = q.type === "majority";
   const choices = d.choices ?? [];
   return (
-    <div className="field"><span className="flabel">{maj ? "Choix · pas de bonne réponse, la majorité gagne" : "Réponses · coche la bonne"}</span>
+    <div className="field"><span className="flabel">{maj ? "Choix · pas de bonne réponse, la majorité gagne" : "Réponses · coche la bonne"}{q.type !== "tf" && " · mélangées à chaque partie"}</span>
       <div className="ans-grid">
         {choices.map((c, k) => (
           <div key={k} className="ans" style={{ "--tc": `var(--c${k + 1})` } as CSSProperties}>

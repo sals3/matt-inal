@@ -285,6 +285,17 @@ export function norm(s: unknown): string {
     .trim();
 }
 
+/** Clé d'un pseudo : « Kévin », « KEVIN », « K.e.v.i.n » et « Кevin » (К cyrillique) donnent la même. */
+export function nameKey(s: unknown): string {
+  const lookalike: Record<string, string> = { а: "a", в: "b", е: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i", ј: "j", "0": "o", "1": "i", l: "i", "|": "i" };
+  return String(s ?? "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/./gu, (c) => lookalike[c] ?? c)
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export function lev(a: string, b: string): number {
   const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {

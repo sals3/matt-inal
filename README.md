@@ -4,7 +4,8 @@ Le quiz du standup de l'équipe de Matt. Matt prépare ses questions, les partag
 
 ## Ce qu'il y a dedans
 
-- **Joueurs** : code d'équipe + nom + avatar la première fois, puis la page suit la partie en direct (WebSocket).
+- **Joueurs** : code d'équipe + nom + avatar la première fois, puis la page suit la partie en direct (WebSocket). Chaque pseudo est unique : « KEVIN », « Kévin » ou « Кevin » (K cyrillique) sont refusés si Kevin existe déjà.
+- **Choix mélangés** : à chaque partie, l'ordre des réponses (sauf vrai ou faux) est tiré au hasard, le même pour tout le monde.
 - **7 types de questions** : choix multiple, zoom mystère (l'image dézoome avec le chrono), le plus proche, majorité l'emporte, rébus emoji, vrai ou faux, et le **Mercredi musical** (titre + artiste, orthographe approximative acceptée, indices qui se débloquent).
 - **Pointage** : 1 000 pts pour la bonne réponse, bonus vitesse plafonné à 200, points doubles au besoin.
 - **Espace Matt** (`#/matt`, protégé par NIP) : planning des 10 prochains jours, éditeur avec image de fond collée au Ctrl+V, aperçu téléphone, extrait audio pour le Mercredi musical.
