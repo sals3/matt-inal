@@ -321,6 +321,35 @@ await host.until((x) => x.phase === "podium");
 host.send({ t: "host", action: "close" });
 await host.until((x) => x.phase === "idle");
 
+// 🏁 La grande course : Julie tente de se téléporter, Kevin se fait croquer, Émilie nage tranquille.
+const quiz5 = await call<{ id: string }>(`/api/quizzes/${addDays(dayStr(), 4)}`, {
+  method: "PUT", headers: A, json: { theme: "Course", status: "ready", questions: [{ type: "race", prompt: "La grande course!", timeLimit: 60, data: { seed: 42, level: "calme" } }] },
+});
+host.send({ t: "host", action: "open", quizId: quiz5.id });
+await host.until((x) => x.phase === "lobby");
+host.send({ t: "host", action: "next" });
+s = await julie.until((x) => x.phase === "question" && x.question?.type === "race");
+const rq = s.question!.id;
+assert(s.question!.data.seed === 42 && s.question!.data.level === "calme", "🏁 course : tout le monde reçoit la même graine de parcours");
+julie.send({ t: "race", qid: rq, d: 300, lives: 3 });
+await Bun.sleep(150);
+assert(!(await host.until((x) => !!x)).race[julie.id], "pendant le décompte 3, 2, 1, personne ne nage");
+await Bun.sleep(3900);
+julie.send({ t: "race", qid: rq, d: 600, lives: 3 });
+kevin.send({ t: "race", qid: rq, d: 30, lives: 0 });
+emilie.send({ t: "race", qid: rq, d: 25, lives: 5 });
+s = await host.until((x) => !!x.race[julie.id] && !!x.race[emilie.id] && x.race[kevin.id]?.done === "eaten");
+assert(s.race[julie.id]!.d < 100 && !s.race[julie.id]!.done, `pas de téléportation : Julie plafonnée à ${s.race[julie.id]!.d} m au lieu de 600`);
+assert(s.race[emilie.id]!.lives === 3 && s.answered.includes(kevin.id), "les vies ne remontent pas ; Kevin croqué a fini sa course");
+host.send({ t: "host", action: "reveal" });
+s = await host.until((x) => x.phase === "reveal" && x.question?.type === "race");
+assert(s.reveal!.detail[kevin.id]?.includes("Croqué") && s.reveal!.points[emilie.id]! > 0 && s.reveal!.points[julie.id]! > s.reveal!.points[emilie.id]!,
+  `classement de la course : Julie ${s.reveal!.points[julie.id]}, Émilie ${s.reveal!.points[emilie.id]}, Kevin ${s.reveal!.points[kevin.id]} (croqué)`);
+host.send({ t: "host", action: "next" });
+await host.until((x) => x.phase === "podium");
+host.send({ t: "host", action: "close" });
+await host.until((x) => x.phase === "idle");
+
 // Ménage : Matt supprime une partie, un joueur et un quiz de test.
 const games = await call<{ id: string; day: string }[]>("/api/games", { headers: A });
 for (const g of games.filter((g) => g.day > dayStr())) await call(`/api/games/${g.id}`, { method: "DELETE", headers: A });

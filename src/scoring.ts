@@ -1,3 +1,4 @@
+import { raceLength, type RaceRun } from "./race";
 import { fuzzyMatch, type Question, type Reveal } from "./shared";
 
 export const BASE = 1000;
@@ -16,6 +17,8 @@ export const HELP_BONUS = 100;
 export const HUNT_PARTIAL = 700;
 /** 🔎 Un clic dans le vide étourdit un moment : pas de mitraillage au hasard. */
 export const HUNT_STUN_MS = 1500;
+/** 🏁 Course : bonus de podium à l'arrivée (1er, 2e, 3e). */
+export const RACE_PODIUM = [200, 100, 50];
 
 export interface RawAnswer {
   playerId: string;
@@ -71,7 +74,7 @@ export function validAnswer(q: Question, value: unknown): unknown {
     if (!Number.isFinite(n)) return undefined;
     return Math.min(q.data.max ?? n, Math.max(q.data.min ?? n, n));
   }
-  if (q.type === "hunt") return undefined; // On clique dans l'image (message « tap »).
+  if (q.type === "hunt" || q.type === "race") return undefined; // Mini-jeux : messages « tap » et « race ».
   if (q.type === "music") {
     const v = (value ?? {}) as Record<string, unknown>;
     const s = (x: unknown) => String(x ?? "").trim().slice(0, 120);
@@ -122,6 +125,22 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
       const all = n > 0 && found >= n;
       points[a.playerId] = all ? (BASE + bonus(a)) * mult : Math.round((HUNT_PARTIAL * found) / Math.max(1, n)) * mult;
       detail[a.playerId] = all ? `Tout trouvé (${n}/${n})` : `${found}/${n} objets trouvés`;
+    }
+  } else if (q.type === "race") {
+    const len = raceLength(q.data.level);
+    const finishers = answers.filter((a) => (a.value as RaceRun).finish).sort((x, y) => x.at - y.at);
+    for (const a of answers) {
+      const v = a.value as RaceRun;
+      const dist = Math.min(len, Math.max(0, v.dist));
+      picks[a.playerId] = Math.round(dist);
+      if (v.finish) {
+        const place = finishers.indexOf(a) + 1;
+        points[a.playerId] = (BASE + bonus(a) + (RACE_PODIUM[place - 1] ?? 0)) * mult;
+        detail[a.playerId] = `🏁 ${place === 1 ? "1er" : `${place}e`} à l'arrivée en ${Math.round(a.at / 1000)} s`;
+      } else {
+        points[a.playerId] = Math.round((HUNT_PARTIAL * dist) / len) * mult;
+        detail[a.playerId] = v.eaten ? `🦈 Croqué à ${Math.round(dist)} m` : `${Math.round(dist)} m sur ${len}`;
+      }
     }
   } else if (q.type === "music") {
     const year = q.data.year ?? null;

@@ -1,6 +1,6 @@
 // Types et utilitaires partagés entre le serveur et le navigateur.
 
-export type QType = "mc" | "tf" | "zoom" | "rebus" | "majority" | "closest" | "music" | "hunt";
+export type QType = "mc" | "tf" | "zoom" | "rebus" | "majority" | "closest" | "music" | "hunt" | "race";
 
 export const TYPES: { id: QType; label: string; hint: string }[] = [
   { id: "mc", label: "Choix multiple", hint: "Une bonne réponse parmi quatre." },
@@ -11,6 +11,7 @@ export const TYPES: { id: QType; label: string; hint: string }[] = [
   { id: "tf", label: "Vrai ou faux", hint: "Deux choix, une seule vérité." },
   { id: "music", label: "Mercredi musical", hint: "Matt joue, l'équipe devine le titre et l'artiste." },
   { id: "hunt", label: "Chasse aux trésors", hint: "Des objets cachés dans un décor : le premier qui trouve tout gagne." },
+  { id: "race", label: "La grande course", hint: "Chacun nage son poisson : évite les requins, les filets et les méduses jusqu'à l'arrivée." },
 ];
 export const TYPE_LABEL = Object.fromEntries(TYPES.map((t) => [t.id, t.label])) as Record<QType, string>;
 
@@ -70,6 +71,9 @@ export interface QData {
   scene?: string;
   spots?: Spot[];
   ratio?: number;
+  /** 🏁 La grande course : graine du parcours et état de la mer. */
+  seed?: number;
+  level?: "calme" | "agite" | "tempete";
 }
 
 export interface Question {
@@ -226,6 +230,8 @@ export interface PublicState {
   applause: { avg: number; count: number } | null;
   /** 🔎 Chasse en cours : nombre d'objets trouvés par joueur. */
   hunt: Record<string, number>;
+  /** 🏁 Course en cours : distance (m), vies, et arrivée ou croqué. */
+  race: Record<string, { d: number; lives: number; done?: "finish" | "eaten"; place?: number }>;
   presence: Player[];
   reveal: Reveal | null;
   totals: Record<string, number>;
@@ -282,6 +288,7 @@ export type ClientMsg =
   | { t: "answer"; qid: string; value: unknown; stake?: number }
   | { t: "help"; target: string }
   | { t: "tap"; qid: string; x: number; y: number }
+  | { t: "race"; qid: string; d: number; lives: number }
   | { t: "react"; e?: string; sticker?: string; target?: string }
   | { t: "away" }
   | { t: "power"; kind: PowerKind }

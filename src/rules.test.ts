@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { shuffleChoices } from "./game";
 import { scoreQuestion } from "./scoring";
 import { SCENES } from "./scenes";
+import { LEVELS, makeCourse, RACE, raceLength } from "./race";
 import { nameKey, spotHit, type Question } from "./shared";
 
 test("pseudos sosies : même clé", () => {
@@ -67,4 +68,36 @@ test("décors maison : cachettes dans l'image, noms uniques", () => {
     for (const s of sc.spots) for (const v of [s.x, s.y]) expect(v > 0 && v < 1).toBe(true);
     expect(sc.svg.startsWith("<svg")).toBe(true);
   }
+});
+
+test("course : même graine, même parcours ; toujours un couloir libre", () => {
+  for (const level of ["calme", "agite", "tempete"] as const) {
+    for (const seed of [1, 42, 123456, 987654321]) {
+      const c = makeCourse(seed, level);
+      expect(makeCourse(seed, level)).toEqual(c);
+      expect(c.length).toBeGreaterThan(5);
+      // À l'arrivée du nageur (les requins ramenés à leur point de rencontre), jamais 3 couloirs bloqués au même endroit.
+      const meet = c.filter((o) => o.kind !== "boost").map((o) => ({ lane: o.lane, x: o.kind === "shark" ? o.at / (1 + RACE.sharkSpeed / RACE.speed) : o.at }));
+      for (const o of meet) expect(new Set(meet.filter((p) => Math.abs(p.x - o.x) < 4).map((p) => p.lane)).size).toBeLessThan(3);
+      expect(Math.max(...c.map((o) => o.at / (o.kind === "shark" ? 1 + RACE.sharkSpeed / RACE.speed : 1)))).toBeLessThan(LEVELS[level].length);
+    }
+  }
+  expect(makeCourse(1, "agite")).not.toEqual(makeCourse(2, "agite"));
+});
+
+test("course : arrivée 1 000 + vitesse + podium ; sinon une part de 700 selon la distance", () => {
+  const race = { ...q("mc"), type: "race", timeLimit: 90, speedBonus: true, data: { seed: 7, level: "agite" } } as Question;
+  const len = raceLength("agite");
+  const r = scoreQuestion(race, [
+    { playerId: "b", value: { dist: len, lives: 1, finish: true }, at: 50_000 },
+    { playerId: "a", value: { dist: len, lives: 3, finish: true }, at: 45_000 },
+    { playerId: "c", value: { dist: len / 2, lives: 0, eaten: true }, at: 30_000 },
+    { playerId: "d", value: { dist: len / 4, lives: 2 }, at: 90_000 },
+  ]);
+  expect(r.points.a).toBe(1000 + 100 + 200 + 100);
+  expect(r.points.b).toBe(1000 + Math.round(200 * (1 - 50 / 90)) + 100 + 100);
+  expect(r.points.c).toBe(350 + 100);
+  expect(r.points.d).toBe(175 + 100);
+  expect(r.detail.a).toContain("1er");
+  expect(r.detail.c).toContain("Croqué");
 });

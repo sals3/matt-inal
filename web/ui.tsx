@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type CSSProperties, type FormEvent, type Re
 import { POWERS, REACTIONS, TYPE_LABEL, type Player, type PublicState, type Question, type Season } from "../src/shared";
 import { api, auth, fmt, signed, toast, uploadImage, useStickers, useToasts, type ReactFn } from "./lib";
 import { HuntReveal } from "./hunt";
+import { RaceReveal } from "./race";
 
 export const SHAPE_NAMES = ["Triangle", "Cercle", "Carré", "Losange"];
 export function Shape({ k }: { k: number }) {
@@ -28,7 +29,7 @@ const MIC = (
     <path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1a7 7 0 0 0 6-6.9z" />
   </svg>
 );
-const BG: Record<string, string> = { mc: "bg-sky", zoom: "bg-sun", closest: "bg-mug", majority: "bg-sky", rebus: "bg-sun", tf: "bg-sky", music: "bg-stage", hunt: "bg-sky" };
+const BG: Record<string, string> = { mc: "bg-sky", zoom: "bg-sun", closest: "bg-mug", majority: "bg-sky", rebus: "bg-sun", tf: "bg-sky", music: "bg-stage", hunt: "bg-sky", race: "bg-sky" };
 const EQ_H = [60, 85, 40, 95, 70, 50, 88, 35, 75, 92, 55, 68, 45, 80, 62, 90, 38, 72, 58, 86, 48, 78, 66, 52];
 
 export function Equalizer({ bars = 24, playing = true, mini = false }: { bars?: number; playing?: boolean; mini?: boolean }) {
@@ -96,6 +97,8 @@ export function RevealPanel({ s, meId }: { s: PublicState; meId?: string }) {
 
   if (q.type === "hunt") {
     detail = <HuntReveal s={s} meId={meId} />;
+  } else if (q.type === "race") {
+    detail = <RaceReveal s={s} meId={meId} />;
   } else if (q.type === "closest") {
     const min = q.data.min ?? 0, max = q.data.max ?? 10, span = Math.max(1, max - min);
     const pos = (v: number) => ((v - min) / span) * 100;
@@ -155,7 +158,7 @@ export function RevealPanel({ s, meId }: { s: PublicState; meId?: string }) {
         <div className="music-answer"><span className="eyebrow">C'était</span><h3 className="display">{r.music.title}</h3><p>{r.music.artist}{r.music.year ? ` · ${r.music.year}` : ""}</p></div>
       )}
       {detail}
-      {q.type !== "music" && q.type !== "hunt" && !r.nobody && (
+      {!["music", "hunt", "race"].includes(q.type) && !r.nobody && (
         <div className="winners">
           {Object.entries(r.points).filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).map(([id, p]) => (
             <span key={id} className={`winner${id === meId ? " me" : ""}`}><Avatar p={name(id)} size="sm" />{name(id)?.name}<b className="mono">{signed(p)}</b>{away(id) ? " 🤖" : " 🧠"}{s.powers[id] ? ` ${POWERS[s.powers[id]!].emoji}` : ""}</span>

@@ -1,4 +1,5 @@
 import type { Store } from "./db";
+import { RACE, raceLength } from "./race";
 import { authorBonus, HELP_BONUS, HUNT_STUN_MS, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
 import {
   dayStr, mondayOf, POWERS, powerFits, REACTIONS, spotHit,
@@ -63,6 +64,9 @@ export class Game {
   helpUsed = new Set<string>();
   /** 🔎 Chasse en cours : objets trouvés, moment du dernier, et fin de l'étourdissement après un clic raté. */
   hunts = new Map<string, { found: number[]; lastAt: number; stunUntil: number }>();
+  /** 🏁 Course en cours : distance, vies, arrivée ou croqué. */
+  races = new Map<string, { d: number; lives: number; at: number; done?: "finish" | "eaten"; place?: number }>();
+  private pendingBroadcast: ReturnType<typeof setTimeout> | null = null;
   week = "";
   crownId: string | null = null;
   applause: { avg: number; count: number } | null = null;
@@ -109,6 +113,7 @@ export class Game {
       crownId: this.crownId,
       applause: this.phase === "reveal" && q?.type === "music" ? this.applause : null,
       hunt: Object.fromEntries([...this.hunts].map(([id, h]) => [id, h.found.length])),
+      race: Object.fromEntries([...this.races].map(([id, r]) => [id, { d: Math.round(r.d), lives: r.lives, done: r.done, place: r.place }])),
       presence: [...this.presence.values()].map((p) => p.player),
       reveal: this.phase === "reveal" ? this.reveal : null,
       totals: this.totals,
@@ -175,7 +180,7 @@ export class Game {
   private startQuestion(i: number) {
     this.clearTimers();
     const q = this.quiz!.questions[i]!;
-    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), helps: new Map(), hunts: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
+    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), helps: new Map(), hunts: new Map(), races: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
     if (q.data.sudden) this.toast("💀 Mort subite! Bonne réponse ×1,5, mauvaise réponse −300.");
     if (q.data.stake) this.toast("🎰 Question à enjeu! Fais ta mise avant de répondre.");
     this.startedAt = Date.now();
@@ -197,6 +202,7 @@ export class Game {
     if (q.authorId === player.id) return "C'est ta question! Tu regardes les autres suer.";
     if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
     if (q.type === "hunt") return "Clique dans le décor pour trouver les objets.";
+    if (q.type === "race") return "Nage jusqu'à l'arrivée!";
     const at = Date.now() - this.startedAt;
     if (at > q.timeLimit * 1000 + GRACE_MS) return "Le temps est écoulé.";
     const v = validAnswer(q, value);
@@ -217,6 +223,47 @@ export class Game {
   private revealIfAllDone(q: Question) {
     const expected = [...this.presence.keys()].filter((id) => id !== q.authorId);
     if (expected.length > 0 && expected.every((id) => this.answers.has(id))) this.timers.push(setTimeout(() => this.doReveal(), 900));
+  }
+
+  /** Les messages de course arrivent souvent : on regroupe les mises à jour (4 par seconde). */
+  private broadcastSoon() {
+    if (this.pendingBroadcast) return;
+    this.pendingBroadcast = setTimeout(() => { this.pendingBroadcast = null; this.broadcast(); }, 250);
+  }
+
+  /** 🏁 Un joueur donne sa distance et ses vies. Le serveur plafonne la vitesse : pas de téléportation. */
+  race(player: Player, qid: string, d: number, lives: number): string | null {
+    const q = this.question;
+    if (this.phase !== "question" || !q || q.id !== qid || q.type !== "race") return null;
+    if (q.authorId === player.id || this.answers.has(player.id) || !Number.isFinite(d) || !Number.isFinite(lives)) return null;
+    const now = Date.now();
+    const at = now - this.startedAt;
+    const t = at - RACE.countdownMs;
+    if (t < 0 || at > q.timeLimit * 1000 + 600) return null;
+    const len = raceLength(q.data.level);
+    const prev = this.races.get(player.id) ?? { d: 0, lives: RACE.lives, at: 0 };
+    const run = {
+      d: Math.min(len, Math.max(prev.d, Math.min(d, (RACE.vmax * t) / 1000 + 20))),
+      lives: Math.max(0, Math.min(prev.lives, Math.round(lives))),
+      at,
+    } as { d: number; lives: number; at: number; done?: "finish" | "eaten"; place?: number };
+    this.races.set(player.id, run);
+    this.participants.set(player.id, player);
+    if (run.d >= len || run.lives === 0) {
+      run.done = run.d >= len ? "finish" : "eaten";
+      this.answers.set(player.id, { playerId: player.id, value: { dist: run.d, lives: run.lives, finish: run.done === "finish", eaten: run.done === "eaten" }, at, away: this.away.has(player.id) });
+      if (run.done === "finish") {
+        run.place = [...this.races.values()].filter((r) => r.done === "finish").length;
+        this.toast(run.place === 1 ? `🏁 ${player.name} gagne la course en ${Math.round(at / 1000)} s!` : `🏁 ${player.name} arrive ${run.place}e.`);
+      } else {
+        this.toast(`🦈 ${player.name} s'est fait croquer à ${Math.round(run.d)} m!`);
+      }
+      this.revealIfAllDone(q);
+      this.broadcast();
+    } else {
+      this.broadcastSoon();
+    }
+    return null;
   }
 
   /** 🔎 Un clic dans le décor de la chasse. La réponse (trouvé ou raté) ne va qu'au joueur. */
@@ -255,6 +302,10 @@ export class Game {
     const q = this.question;
     if (this.phase !== "question" || !q || !this.gameId) return "Aucune question en cours.";
     this.clearTimers();
+    // 🏁 Ceux qui nagent encore gardent leur distance.
+    for (const [id, r] of this.races) {
+      if (!this.answers.has(id) && r.d > 0) this.answers.set(id, { playerId: id, value: { dist: r.d, lives: r.lives }, at: r.at, away: this.away.has(id) });
+    }
     // 🔎 Ceux qui n'ont pas tout trouvé gardent leurs trouvailles.
     for (const [id, h] of this.hunts) {
       if (!this.answers.has(id) && h.found.length) this.answers.set(id, { playerId: id, value: { found: h.found }, at: h.lastAt, away: this.away.has(id) });
@@ -356,6 +407,7 @@ export class Game {
     if (this.phase !== "question" || !q) return "Le coup de main se demande pendant une question.";
     if (q.type === "music") return "Pas de coup de main au Mercredi musical : c'est entre toi et ton oreille.";
     if (q.type === "hunt") return "Pas de coup de main à la chasse : chacun ses lunettes!";
+    if (q.type === "race") return "Pas de coup de main dans la course : chacun ses nageoires!";
     if (q.authorId === player.id) return "C'est ta question!";
     if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
     if (this.helpUsed.has(player.id)) return "T'as déjà utilisé ton coup de main dans cette partie.";

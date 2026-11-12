@@ -3,6 +3,7 @@ import { dayStr, type Player, type QuizSummary } from "../src/shared";
 import { api, confetti, frDay, sfx, toast, useCountdown, useGame } from "./lib";
 import { ApplauseMeter, PowerLine, ShellBanner } from "./fun";
 import { HuntLive } from "./hunt";
+import { RaceLive } from "./race";
 import { AdminGate, Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, Timer, Visual } from "./ui";
 
 export function HostPage() {
@@ -84,7 +85,7 @@ function Host() {
           : s.phase === "reveal" ? (
             <>
               <QHead s={s} right={<span className="eyebrow">Réponse révélée</span>} />
-              <div className={`reveal-top${s.question!.type === "hunt" ? " solo" : ""}`}>{s.question!.type !== "hunt" && <Visual q={s.question!} small />}<h2 className="prompt">{s.question!.prompt}</h2></div>
+              <div className={`reveal-top${["hunt", "race"].includes(s.question!.type) ? " solo" : ""}`}>{!["hunt", "race"].includes(s.question!.type) && <Visual q={s.question!} small />}<h2 className="prompt">{s.question!.prompt}</h2></div>
               {s.question!.type === "music" && <ApplauseMeter s={s} />}
               <RevealPanel s={s} />
             </>
@@ -132,7 +133,7 @@ function QuestionScreen({ s, offset }: { s: NonNullable<ReturnType<typeof useGam
     <>
       <QHead s={s} right={<Timer left={left} frac={frac} />} />
       <ShellBanner s={s} />
-      {q.type !== "hunt" && <Visual q={q} zoom={q.type === "zoom" ? 1 + 6 * frac : 1} blur={q.type === "zoom" ? 7 * frac : 0} tag={q.type === "music" ? "Matt · en direct" : undefined} />}
+      {!["hunt", "race"].includes(q.type) && <Visual q={q} zoom={q.type === "zoom" ? 1 + 6 * frac : 1} blur={q.type === "zoom" ? 7 * frac : 0} tag={q.type === "music" ? "Matt · en direct" : undefined} />}
       <h2 className="prompt big-prompt">{q.prompt}</h2>
       {q.authorId && s.players[q.authorId] && <p className="author-line">📬 Question proposée par <b>{s.players[q.authorId]!.name}</b></p>}
       <PowerLine s={s} />
@@ -144,6 +145,8 @@ function QuestionScreen({ s, offset }: { s: NonNullable<ReturnType<typeof useGam
         </div>
       ) : q.type === "hunt" ? (
         <HuntLive s={s} />
+      ) : q.type === "race" ? (
+        <RaceLive s={s} />
       ) : q.type === "closest" ? (
         <p className="lede">Entre {q.data.min} et {q.data.max}. Le plus proche gagne.</p>
       ) : (

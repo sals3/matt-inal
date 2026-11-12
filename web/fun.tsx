@@ -148,7 +148,7 @@ export function HelpBox({ s, meId, q, done, onAsk, onHelp }: {
   const [seen, setSeen] = useState<{ helper: string; answered: boolean; pick?: unknown } | null>(null);
   useEffect(() => onHelp(setSeen), [onHelp]);
   const helper = s.helps?.[meId];
-  if (q.type === "music" || q.type === "hunt") return null;
+  if (["music", "hunt", "race"].includes(q.type)) return null;
   if (helper) {
     const name = s.players[helper]?.name ?? "Ton coéquipier";
     const pick = seen?.helper === helper && seen.answered ? seen.pick : undefined;
