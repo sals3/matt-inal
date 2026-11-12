@@ -60,6 +60,7 @@ export type ReactEvent = { playerId: string; e?: string; sticker?: string; targe
 export type ReactFn = (r: ReactEvent) => void;
 export type PowerFn = (p: { kind: PowerKind; removed?: number[] }) => void;
 export type HelpFn = (h: { helper: string; answered: boolean; pick?: unknown }) => void;
+export type TapFn = (t: { hit: number | null; x: number; y: number; stunMs?: number }) => void;
 export function useGame(role: "player" | "host") {
   const [state, setState] = useState<PublicState | null>(null);
   const [connected, setConnected] = useState(false);
@@ -68,6 +69,7 @@ export function useGame(role: "player" | "host") {
   const reactSubs = useRef(new Set<ReactFn>());
   const powerSubs = useRef(new Set<PowerFn>());
   const helpSubs = useRef(new Set<HelpFn>());
+  const tapSubs = useRef(new Set<TapFn>());
 
   useEffect(() => {
     let stopped = false;
@@ -86,6 +88,7 @@ export function useGame(role: "player" | "host") {
         else if (m.t === "stickers") void refreshStickers();
         else if (m.t === "power") powerSubs.current.forEach((f) => f(m));
         else if (m.t === "help") helpSubs.current.forEach((f) => f(m));
+        else if (m.t === "tap") tapSubs.current.forEach((f) => f(m));
       };
       ws.onclose = () => {
         setConnected(false);
@@ -104,7 +107,8 @@ export function useGame(role: "player" | "host") {
   const onReact = useCallback((f: ReactFn) => { reactSubs.current.add(f); return () => { reactSubs.current.delete(f); }; }, []);
   const onPower = useCallback((f: PowerFn) => { powerSubs.current.add(f); return () => { powerSubs.current.delete(f); }; }, []);
   const onHelp = useCallback((f: HelpFn) => { helpSubs.current.add(f); return () => { helpSubs.current.delete(f); }; }, []);
-  return { state, connected, send, offset, onReact, onPower, onHelp };
+  const onTap = useCallback((f: TapFn) => { tapSubs.current.add(f); return () => { tapSubs.current.delete(f); }; }, []);
+  return { state, connected, send, offset, onReact, onPower, onHelp, onTap };
 }
 
 export function useNow(intervalMs = 100) {

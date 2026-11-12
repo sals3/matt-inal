@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Dra
 import { TYPES, TYPE_LABEL, upcomingWeekdays, weekday, type QType, type Question, type Quiz, type QuizStatus, type QuizSummary } from "../src/shared";
 import { api, frDay, resizeImage, toast } from "./lib";
 import { SubmissionInbox } from "./fun";
+import { HuntEditor, HuntPreview } from "./hunt";
+import { SCENES } from "../src/scenes";
 import { AdminGate, Shape, Visual } from "./ui";
 
 export function EditorPage() {
@@ -19,6 +21,10 @@ function blankQuestion(type: QType, day: string): Question {
   const base = { id: tmpId(), type, prompt: "", emoji: "❓", imageId: null, timeLimit: 20, speedBonus: true, doublePoints: weekday(day) === 5 };
   if (type === "music") return { ...base, emoji: "🎹", prompt: "Devine la toune que je joue", timeLimit: 60, data: { title: "", artist: "", alts: [], year: null, hints: ["", "", ""], mode: "live", style: "Piano instru", audioId: null } };
   if (type === "closest") return { ...base, data: { answer: 5, min: 0, max: 10 } };
+  if (type === "hunt") {
+    const sc = SCENES.recif!;
+    return { ...base, emoji: "🔎", prompt: "Trouve les objets cachés dans le décor!", timeLimit: 60, data: { scene: "recif", ratio: sc.ratio, spots: sc.spots.map((s) => ({ ...s })) } };
+  }
   if (type === "tf") return { ...base, timeLimit: 15, data: { choices: ["Vrai", "Faux"], correct: 0 } };
   if (type === "majority") return { ...base, data: { choices: ["", "", "", ""] } };
   return { ...base, data: { choices: ["", "", "", ""], correct: 0 } };
@@ -169,7 +175,7 @@ function Editor() {
                   </div>
                   <div className="field"><label htmlFor="prompt">Question</label><textarea id="prompt" className="input" rows={2} value={q.prompt} placeholder="Écris ta question ici" onChange={(e) => patchQ((x) => ({ ...x, prompt: e.target.value }))} /></div>
 
-                  {q.type !== "music" && (
+                  {q.type !== "music" && q.type !== "hunt" && (
                     <div className="field"><span className="flabel">Image de fond</span>
                       <div className="drop" onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }} onDragLeave={(e) => e.currentTarget.classList.remove("over")} onDrop={onDrop}>
                         <div className="thumb" style={q.imageId ? { backgroundImage: `url(/media/${q.imageId})` } : undefined}>{q.imageId ? "" : q.emoji || "🖼️"}</div>
@@ -183,7 +189,7 @@ function Editor() {
                     </div>
                   )}
 
-                  <Answers q={q} patchData={patchData} upload={upload} />
+                  {q.type === "hunt" ? <HuntEditor q={q} patchData={patchData} onPickImage={(f) => void upload(f, "image")} /> : <Answers q={q} patchData={patchData} upload={upload} />}
 
                   <div className="field"><span className="flabel">Chrono</span>
                     <div className="types">{TIMES.map((t) => <button key={t} className="type" aria-pressed={q.timeLimit === t} onClick={() => patchQ((x) => ({ ...x, timeLimit: t }))}>{t} s</button>)}</div></div>
@@ -191,7 +197,7 @@ function Editor() {
                     {q.type !== "music" && <label className="toggle"><input type="checkbox" checked={q.speedBonus} onChange={(e) => patchQ((x) => ({ ...x, speedBonus: e.target.checked }))} /> Bonus vitesse (200 pts max)</label>}
                     <label className="toggle"><input type="checkbox" checked={q.doublePoints} onChange={(e) => patchQ((x) => ({ ...x, doublePoints: e.target.checked }))} /> Points doubles</label>
                     <label className="toggle" title="Quitter le quiz pendant la question (ChatGPT, Google…) donne 0 point"><input type="checkbox" checked={!!q.data.strict} onChange={(e) => patchData({ strict: e.target.checked || undefined })} /> 🧠 Cerveau strict (pas d'IA)</label>
-                    {q.type !== "music" && <>
+                    {q.type !== "music" && q.type !== "hunt" && <>
                       <label className="toggle" title="Bonne réponse ×1,5, mauvaise réponse −300"><input type="checkbox" checked={!!q.data.sudden} onChange={(e) => patchData({ sudden: e.target.checked || undefined, stake: undefined })} /> 💀 Mort subite</label>
                       <label className="toggle" title="Chacun mise de 0 à 1 000 : bonne réponse 500 + la mise, mauvaise −la mise"><input type="checkbox" checked={!!q.data.stake} onChange={(e) => patchData({ stake: e.target.checked || undefined, sudden: undefined })} /> 🎰 Question à enjeu</label>
                     </>}
@@ -297,9 +303,11 @@ function Preview({ q }: { q: Question }) {
     <>
       <div className="notch" />
       <div className="pv-head"><span className="pill">{TYPE_LABEL[q.type]}</span><span className="mono small">{q.timeLimit} s{q.doublePoints ? " · ×2" : ""}</span></div>
-      <Visual q={q} zoom={q.type === "zoom" ? 2.6 : 1} blur={q.type === "zoom" ? 2 : 0} tag={q.type === "music" ? "Matt · en direct" : undefined} />
+      {q.type !== "hunt" && <Visual q={q} zoom={q.type === "zoom" ? 2.6 : 1} blur={q.type === "zoom" ? 2 : 0} tag={q.type === "music" ? "Matt · en direct" : undefined} />}
       <p className="prompt">{q.prompt || "Ta question ici"}</p>
-      {q.type === "closest" ? (
+      {q.type === "hunt" ? (
+        <HuntPreview q={q} />
+      ) : q.type === "closest" ? (
         <div className="guess"><div className="guess-num sm">{Math.round(((q.data.min ?? 0) + (q.data.max ?? 10)) / 2)}</div><input className="range" type="range" disabled aria-label="Aperçu" /></div>
       ) : q.type === "music" ? (
         <><div className="pv-in">Titre…</div><div className="pv-in">Artiste…</div>{q.data.hints?.[0] && <p className="small muted">Indice 1 : {q.data.hints[0]}</p>}</>

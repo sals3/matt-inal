@@ -27,6 +27,7 @@ function client(query: string) {
   const powers: Extract<ServerMsg, { t: "power" }>[] = [];
   const errors: string[] = [];
   const helpMsgs: Extract<ServerMsg, { t: "help" }>[] = [];
+  const taps: Extract<ServerMsg, { t: "tap" }>[] = [];
   const waiters: { pred: (s: PublicState) => boolean; resolve: (s: PublicState) => void }[] = [];
   ws.onmessage = (ev) => {
     const m = JSON.parse(String(ev.data)) as ServerMsg;
@@ -34,6 +35,7 @@ function client(query: string) {
     if (m.t === "react") reacts.push(m);
     if (m.t === "power") powers.push(m);
     if (m.t === "help") helpMsgs.push(m);
+    if (m.t === "tap") taps.push(m);
     if (m.t !== "state") return;
     last = m.s;
     for (const w of [...waiters]) if (w.pred(m.s)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(m.s); }
@@ -45,7 +47,7 @@ function client(query: string) {
       setTimeout(() => reject(new Error("délai dépassé")), ms);
     });
   const open = new Promise((r) => (ws.onopen = r));
-  return { ws, until, open, reacts, powers, errors, helpMsgs, send: (m: unknown) => ws.send(JSON.stringify(m)) };
+  return { ws, until, open, reacts, powers, errors, helpMsgs, taps, send: (m: unknown) => ws.send(JSON.stringify(m)) };
 }
 
 const admin = (await call<{ token: string }>("/api/admin/login", { method: "POST", json: { pin: PIN } })).token;
@@ -283,6 +285,41 @@ assert(players.find((p) => p.id === emilie.id)?.champ && !players.find((p) => p.
 // (La 2e partie a été jouée sur le quiz de demain : elle compte donc dans la saison 4.)
 const lb = await call<{ cup: Season[]; season: Season }>(`/api/leaderboard`, { headers: A });
 assert(lb.cup.length === 3 && lb.season.num === 4, "la Coupe a 3 plaques et la saison 4 est ouverte");
+
+// 🔎 Chasse aux trésors : Julie trouve tout, Kevin clique au hasard et se fait étourdir, Émilie trouve un objet.
+const quiz4 = await call<{ id: string }>(`/api/quizzes/${addDays(dayStr(), 3)}`, {
+  method: "PUT", headers: A, json: {
+    theme: "Chasse", status: "ready", questions: [
+      { type: "hunt", prompt: "Trouve les objets cachés!", timeLimit: 30, data: { scene: "recif", spots: [{ label: "La tasse", x: 0.2, y: 0.5, r: 0.03 }, { label: "Le beigne", x: 0.6, y: 0.3, r: 0.03 }] } },
+    ],
+  },
+});
+host.send({ t: "host", action: "open", quizId: quiz4.id });
+await host.until((x) => x.phase === "lobby");
+host.send({ t: "host", action: "next" });
+s = await julie.until((x) => x.phase === "question" && x.question?.type === "hunt");
+assert(s.question!.data.spots?.length === 2 && s.question!.data.spots.every((p) => p.x === -1), "🔎 chasse : la liste des objets est envoyée, pas leurs cachettes");
+const hq = s.question!.id;
+kevin.send({ t: "tap", qid: hq, x: 0.9, y: 0.9 });
+await Bun.sleep(150);
+kevin.send({ t: "tap", qid: hq, x: 0.2, y: 0.5 });
+await Bun.sleep(150);
+assert(kevin.taps.length === 1 && kevin.taps[0]!.hit === null && kevin.taps[0]!.stunMs, "clic dans le vide : Kevin est étourdi, son clic suivant ne compte pas");
+julie.send({ t: "tap", qid: hq, x: 0.205, y: 0.505 });
+julie.send({ t: "tap", qid: hq, x: 0.6, y: 0.3 });
+emilie.send({ t: "tap", qid: hq, x: 0.6, y: 0.31 });
+s = await host.until((x) => x.hunt[julie.id] === 2 && x.hunt[emilie.id] === 1);
+await Bun.sleep(150);
+assert(julie.taps.filter((t) => t.hit !== null).length === 2 && s.answered.includes(julie.id), "Julie trouve les 2 objets ; la course s'affiche en direct");
+host.send({ t: "host", action: "reveal" });
+s = await host.until((x) => x.phase === "reveal" && x.question?.type === "hunt");
+assert(s.question!.data.spots?.[0]?.x === 0.2, "à la révélation, les cachettes sont montrées");
+assert(s.reveal!.points[julie.id]! > 1250 && s.reveal!.points[emilie.id] === 450 && s.reveal!.points[kevin.id] === undefined,
+  `pointage de la chasse : Julie ${s.reveal!.points[julie.id]} (tout + vitesse + cerveau), Émilie 450 (1 objet sur 2 + cerveau), Kevin bredouille`);
+host.send({ t: "host", action: "next" });
+await host.until((x) => x.phase === "podium");
+host.send({ t: "host", action: "close" });
+await host.until((x) => x.phase === "idle");
 
 // Ménage : Matt supprime une partie, un joueur et un quiz de test.
 const games = await call<{ id: string; day: string }[]>("/api/games", { headers: A });

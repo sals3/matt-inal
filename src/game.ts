@@ -1,7 +1,7 @@
 import type { Store } from "./db";
-import { authorBonus, HELP_BONUS, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
+import { authorBonus, HELP_BONUS, HUNT_STUN_MS, hintTimes, scoreQuestion, validAnswer, type RawAnswer } from "./scoring";
 import {
-  dayStr, mondayOf, POWERS, powerFits, REACTIONS,
+  dayStr, mondayOf, POWERS, powerFits, REACTIONS, spotHit,
   type Phase, type Player, type PowerKind, type PublicState, type Question, type Quiz, type Reveal, type ServerMsg,
 } from "./shared";
 
@@ -11,8 +11,16 @@ const GRACE_MS = 600;
 /** Retire ce qui donnerait la réponse avant la révélation. */
 function sanitize(q: Question, hintsShown: number, revealed: boolean): Question {
   if (revealed) return q;
-  const { correct, answer, title, alts, artist, year, hints, ...safe } = q.data;
-  return { ...q, data: { ...safe, hints: (hints ?? []).filter((h) => h && h.trim()).slice(0, hintsShown) } };
+  const { correct, answer, title, alts, artist, year, hints, spots, ...safe } = q.data;
+  return {
+    ...q,
+    data: {
+      ...safe,
+      hints: (hints ?? []).filter((h) => h && h.trim()).slice(0, hintsShown),
+      // La chasse : on montre la liste des objets, pas leur cachette.
+      ...(spots ? { spots: spots.map((s) => ({ label: s.label, x: -1, y: -1, r: 0 })) } : {}),
+    },
+  };
 }
 
 /** Types dont on mélange les choix à chaque partie (vrai ou faux garde son ordre). */
@@ -53,6 +61,8 @@ export class Game {
   helps = new Map<string, string>();
   /** Un coup de main par joueur et par partie. */
   helpUsed = new Set<string>();
+  /** 🔎 Chasse en cours : objets trouvés, moment du dernier, et fin de l'étourdissement après un clic raté. */
+  hunts = new Map<string, { found: number[]; lastAt: number; stunUntil: number }>();
   week = "";
   crownId: string | null = null;
   applause: { avg: number; count: number } | null = null;
@@ -98,6 +108,7 @@ export class Game {
       helpUsed: [...this.helpUsed],
       crownId: this.crownId,
       applause: this.phase === "reveal" && q?.type === "music" ? this.applause : null,
+      hunt: Object.fromEntries([...this.hunts].map(([id, h]) => [id, h.found.length])),
       presence: [...this.presence.values()].map((p) => p.player),
       reveal: this.phase === "reveal" ? this.reveal : null,
       totals: this.totals,
@@ -164,7 +175,7 @@ export class Game {
   private startQuestion(i: number) {
     this.clearTimers();
     const q = this.quiz!.questions[i]!;
-    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), helps: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
+    Object.assign(this, { qIndex: i, phase: "question", answers: new Map(), away: new Set(), powerUse: new Map(), helps: new Map(), hunts: new Map(), shell: null, applause: null, reveal: null, hintsShown: 0 });
     if (q.data.sudden) this.toast("💀 Mort subite! Bonne réponse ×1,5, mauvaise réponse −300.");
     if (q.data.stake) this.toast("🎰 Question à enjeu! Fais ta mise avant de répondre.");
     this.startedAt = Date.now();
@@ -185,6 +196,7 @@ export class Game {
     if (this.phase !== "question" || !q || q.id !== qid) return "Trop tard pour cette question.";
     if (q.authorId === player.id) return "C'est ta question! Tu regardes les autres suer.";
     if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
+    if (q.type === "hunt") return "Clique dans le décor pour trouver les objets.";
     const at = Date.now() - this.startedAt;
     if (at > q.timeLimit * 1000 + GRACE_MS) return "Le temps est écoulé.";
     const v = validAnswer(q, value);
@@ -196,9 +208,45 @@ export class Game {
     for (const [req, helper] of this.helps) {
       if (helper === player.id) this.publishTo(req, { t: "help", helper: player.id, answered: true, pick: v });
     }
-    // Tout le monde a répondu (sauf l'auteur de la question) : on révèle sans attendre la fin du chrono.
+    this.revealIfAllDone(q);
+    this.broadcast();
+    return null;
+  }
+
+  /** Tout le monde a répondu (sauf l'auteur de la question) : on révèle sans attendre la fin du chrono. */
+  private revealIfAllDone(q: Question) {
     const expected = [...this.presence.keys()].filter((id) => id !== q.authorId);
     if (expected.length > 0 && expected.every((id) => this.answers.has(id))) this.timers.push(setTimeout(() => this.doReveal(), 900));
+  }
+
+  /** 🔎 Un clic dans le décor de la chasse. La réponse (trouvé ou raté) ne va qu'au joueur. */
+  tap(player: Player, qid: string, x: number, y: number): string | null {
+    const q = this.question;
+    if (this.phase !== "question" || !q || q.id !== qid || q.type !== "hunt") return "Trop tard pour cette chasse.";
+    if (q.authorId === player.id) return "C'est ta chasse! Tu regardes les autres chercher.";
+    if (this.answers.has(player.id) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const now = Date.now();
+    const at = now - this.startedAt;
+    if (at > q.timeLimit * 1000 + 600) return "Le temps est écoulé.";
+    const h = this.hunts.get(player.id) ?? { found: [], lastAt: 0, stunUntil: 0 };
+    this.hunts.set(player.id, h);
+    this.participants.set(player.id, player);
+    if (now < h.stunUntil) return null;
+    const spots = q.data.spots ?? [];
+    const hit = spotHit(spots, q.data.ratio ?? 1.5, x, y, h.found);
+    if (hit === null) {
+      h.stunUntil = now + HUNT_STUN_MS;
+      this.publishTo(player.id, { t: "tap", hit: null, x, y, stunMs: HUNT_STUN_MS });
+      return null;
+    }
+    h.found.push(hit);
+    h.lastAt = at;
+    this.publishTo(player.id, { t: "tap", hit, x, y });
+    if (h.found.length >= spots.length) {
+      this.answers.set(player.id, { playerId: player.id, value: { found: h.found }, at, away: this.away.has(player.id) });
+      this.toast(`🔎 ${player.name} a tout trouvé en ${Math.round(at / 1000)} s!`);
+      this.revealIfAllDone(q);
+    }
     this.broadcast();
     return null;
   }
@@ -207,6 +255,10 @@ export class Game {
     const q = this.question;
     if (this.phase !== "question" || !q || !this.gameId) return "Aucune question en cours.";
     this.clearTimers();
+    // 🔎 Ceux qui n'ont pas tout trouvé gardent leurs trouvailles.
+    for (const [id, h] of this.hunts) {
+      if (!this.answers.has(id) && h.found.length) this.answers.set(id, { playerId: id, value: { found: h.found }, at: h.lastAt, away: this.away.has(id) });
+    }
     const answers = [...this.answers.values()].map((a) => ({
       ...a,
       double: this.powerUse.get(a.playerId) === "double",
@@ -303,6 +355,7 @@ export class Game {
     const q = this.question;
     if (this.phase !== "question" || !q) return "Le coup de main se demande pendant une question.";
     if (q.type === "music") return "Pas de coup de main au Mercredi musical : c'est entre toi et ton oreille.";
+    if (q.type === "hunt") return "Pas de coup de main à la chasse : chacun ses lunettes!";
     if (q.authorId === player.id) return "C'est ta question!";
     if (this.answers.has(player.id)) return "Ta réponse est déjà verrouillée.";
     if (this.helpUsed.has(player.id)) return "T'as déjà utilisé ton coup de main dans cette partie.";

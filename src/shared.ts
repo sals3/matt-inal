@@ -1,6 +1,6 @@
 // Types et utilitaires partagés entre le serveur et le navigateur.
 
-export type QType = "mc" | "tf" | "zoom" | "rebus" | "majority" | "closest" | "music";
+export type QType = "mc" | "tf" | "zoom" | "rebus" | "majority" | "closest" | "music" | "hunt";
 
 export const TYPES: { id: QType; label: string; hint: string }[] = [
   { id: "mc", label: "Choix multiple", hint: "Une bonne réponse parmi quatre." },
@@ -10,6 +10,7 @@ export const TYPES: { id: QType; label: string; hint: string }[] = [
   { id: "rebus", label: "Rébus emoji", hint: "Des emojis à décoder." },
   { id: "tf", label: "Vrai ou faux", hint: "Deux choix, une seule vérité." },
   { id: "music", label: "Mercredi musical", hint: "Matt joue, l'équipe devine le titre et l'artiste." },
+  { id: "hunt", label: "Chasse aux trésors", hint: "Des objets cachés dans un décor : le premier qui trouve tout gagne." },
 ];
 export const TYPE_LABEL = Object.fromEntries(TYPES.map((t) => [t.id, t.label])) as Record<QType, string>;
 
@@ -22,6 +23,26 @@ export interface Player {
   avatarId?: string | null;
   /** Champion en titre : gagnant de la dernière saison gravée sur la Coupe. */
   champ?: boolean;
+}
+
+/** Un objet caché de la chasse aux trésors. x et y : fraction de la largeur et de la hauteur ; r : rayon, en fraction de la largeur. */
+export interface Spot {
+  label: string;
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** L'objet touché par un clic (x, y en fractions de l'image), parmi ceux pas encore trouvés. */
+export function spotHit(spots: Spot[], ratio: number, x: number, y: number, skip: number[] = []): number | null {
+  let best: number | null = null, bestD = Infinity;
+  spots.forEach((s, k) => {
+    if (skip.includes(k)) return;
+    // Distances en largeurs d'image (l'image n'est pas carrée).
+    const d = Math.hypot(x - s.x, (y - s.y) / ratio);
+    if (d <= s.r + 0.008 && d < bestD) { best = k; bestD = d; }
+  });
+  return best;
 }
 
 /** Données propres à chaque type de question (forme plate pour rester simple). */
@@ -45,6 +66,10 @@ export interface QData {
   sudden?: boolean;
   /** 🎰 Question à enjeu : chacun mise de 0 à 1 000 ; bonne réponse 500 + la mise, mauvaise −la mise. */
   stake?: boolean;
+  /** 🔎 Chasse aux trésors : décor maison (sinon l'image de fond), objets cachés et proportions largeur / hauteur. */
+  scene?: string;
+  spots?: Spot[];
+  ratio?: number;
 }
 
 export interface Question {
@@ -199,6 +224,8 @@ export interface PublicState {
   helpUsed: string[];
   /** Applaudimètre en direct (révélation d'un Mercredi musical). */
   applause: { avg: number; count: number } | null;
+  /** 🔎 Chasse en cours : nombre d'objets trouvés par joueur. */
+  hunt: Record<string, number>;
   presence: Player[];
   reveal: Reveal | null;
   totals: Record<string, number>;
@@ -254,6 +281,7 @@ export interface Sticker {
 export type ClientMsg =
   | { t: "answer"; qid: string; value: unknown; stake?: number }
   | { t: "help"; target: string }
+  | { t: "tap"; qid: string; x: number; y: number }
   | { t: "react"; e?: string; sticker?: string; target?: string }
   | { t: "away" }
   | { t: "power"; kind: PowerKind }
@@ -268,6 +296,8 @@ export type ServerMsg =
   | { t: "help"; helper: string; answered: boolean; pick?: unknown }
   | { t: "react"; playerId: string; e?: string; sticker?: string; target?: string }
   | { t: "stickers" }
+  /** Réponse privée à un clic de la chasse : objet trouvé, ou raté (étourdi un moment). */
+  | { t: "tap"; hit: number | null; x: number; y: number; stunMs?: number }
   | { t: "error"; msg: string };
 
 export const REACTIONS = ["😂", "🔥", "😱", "👏", "☕", "🎉"];

@@ -2,6 +2,7 @@ import type { ServerWebSocket } from "bun";
 import index from "../web/index.html";
 import { openStore } from "./db";
 import { Game } from "./game";
+import { SCENES } from "./scenes";
 import { addDays, dayStr, mondayOf, nameKey, TYPES, type ClientMsg, type Player, type PowerKind, type Question, type QuizStatus, type ServerMsg } from "./shared";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -57,7 +58,14 @@ function cleanQuestion(raw: any): Question | null {
   const num = (v: unknown, dflt: number) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
   const data: Question["data"] = {};
   if (raw.type === "closest") Object.assign(data, { answer: num(d.answer, 0), min: num(d.min, 0), max: num(d.max, 10) });
-  else if (raw.type === "music") {
+  else if (raw.type === "hunt") {
+    const clamp = (v: unknown, lo: number, hi: number, dflt: number) => Math.min(hi, Math.max(lo, num(v, dflt)));
+    const scene = typeof d.scene === "string" && SCENES[d.scene] ? d.scene : undefined;
+    const spots = (Array.isArray(d.spots) ? d.spots : []).slice(0, 8)
+      .map((s: any) => ({ label: clean(s?.label, 40), x: clamp(s?.x, 0, 1, 0.5), y: clamp(s?.y, 0, 1, 0.5), r: clamp(s?.r, 0.015, 0.2, 0.04) }))
+      .filter((s: { label: string }) => s.label);
+    Object.assign(data, { spots, ratio: scene ? SCENES[scene]!.ratio : clamp(d.ratio, 0.3, 3, 1.5), ...(scene ? { scene } : {}) });
+  } else if (raw.type === "music") {
     Object.assign(data, {
       title: clean(d.title, 120), artist: clean(d.artist, 120), alts: strs(d.alts, 10).filter(Boolean),
       year: Number.isInteger(Number(d.year)) && Number(d.year) > 0 ? Number(d.year) : null,
@@ -72,7 +80,7 @@ function cleanQuestion(raw: any): Question | null {
   }
   if (d.strict) data.strict = true;
   // Mort subite et question à enjeu : pas au Mercredi musical, et jamais les deux à la fois.
-  if (raw.type !== "music") {
+  if (raw.type !== "music" && raw.type !== "hunt") {
     if (d.stake) data.stake = true;
     else if (d.sudden) data.sudden = true;
   }
@@ -397,6 +405,7 @@ server = Bun.serve<WsData, any>({
       const me = ws.data.player;
       if (msg.t === "answer" && me) reply(game.answer(me, String(msg.qid), msg.value, msg.stake));
       else if (msg.t === "help" && me) reply(game.help(me, String(msg.target)));
+      else if (msg.t === "tap" && me) reply(game.tap(me, String(msg.qid), Number(msg.x), Number(msg.y)));
       else if (msg.t === "react" && me) game.react(me.id, msg);
       else if (msg.t === "away" && me) game.markAway(me);
       else if (msg.t === "power" && me) {

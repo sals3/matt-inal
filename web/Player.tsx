@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Form
 import { type Player, type PowerKind, type PublicState } from "../src/shared";
 import { ApplauseStars, HelpBox, ItemBoxReveal, ItemsCard, PowerBar, PowerLine, RecoverForm, RecoveryBox, ShellBanner, StakePicker, SubmitQuestion, useInventory } from "./fun";
 import { api, auth, AVATARS, COLORS, confetti, frDay, fmt, ord, sfx, signed, toast, uploadImage, useAwayWatch, useCountdown, useGame } from "./lib";
+import { HuntBoard } from "./hunt";
 import { Avatar, FloatingReactions, Podium, QHead, RevealPanel, Shape, SHAPE_NAMES, TeaseBar, Timer, Visual } from "./ui";
 
 export function PlayerPage() {
@@ -211,13 +212,13 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
 
   const zoom = q.type === "zoom" && !answered ? 1 + 6 * frac : 1;
   const blur = q.type === "zoom" && !answered ? 7 * frac : 0;
-  const tip = { zoom: "L'image dézoome avec le temps : plus tu réponds tôt, plus le bonus est gros.", majority: "Pas de bonne réponse : tu gagnes si tu choisis comme la majorité.", closest: "Le plus proche gagne au moins 500 pts.", music: "Matt joue en direct. Chaque indice débloqué enlève 150 pts. L'orthographe approximative est acceptée." }[q.type as string];
+  const tip = { zoom: "L'image dézoome avec le temps : plus tu réponds tôt, plus le bonus est gros.", majority: "Pas de bonne réponse : tu gagnes si tu choisis comme la majorité.", closest: "Le plus proche gagne au moins 500 pts.", hunt: "Clique les objets dans le décor. Un clic dans le vide t'étourdit 1,5 s : pas de clics au hasard!", music: "Matt joue en direct. Chaque indice débloqué enlève 150 pts. L'orthographe approximative est acceptée." }[q.type as string];
 
   return (
     <>
       <QHead s={s} right={<Timer left={left} frac={frac} />} />
       <ShellBanner s={s} />
-      <Visual q={q} zoom={zoom} blur={blur} tag={q.type === "music" ? "Matt · en direct" : undefined} />
+      {q.type !== "hunt" && <Visual q={q} zoom={zoom} blur={blur} tag={q.type === "music" ? "Matt · en direct" : undefined} />}
       <h2 className="prompt">{q.prompt}</h2>
       {tip && !mine && <p className="muted small">{tip}</p>}
       {q.authorId && !mine && s.players[q.authorId] && <p className="small author-line">📬 Question proposée par <b>{s.players[q.authorId]!.name}</b></p>}
@@ -226,6 +227,8 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
       {q.data.stake && !mine && <StakePicker stake={stake} setStake={setStake} disabled={done} />}
       {mine ? (
         <div className="own-q"><span className="big-emoji">🍿</span><p><b>C'est ta question!</b> Tu ne peux pas y répondre. Si 30 à 70 % de l'équipe trouve, tu gagnes 300 pts. Croise les doigts.</p></div>
+      ) : q.type === "hunt" ? (
+        <HuntBoard key={q.id} q={q} done={done} send={g.send} onTap={g.onTap} />
       ) : q.type === "closest" ? (
         <div className="guess">
           <div className="guess-num">{guess}</div>
@@ -264,7 +267,7 @@ function QuestionView({ s, me, g, inv }: { s: PublicState; me: Player; g: Return
       {!wentAway && !done && <p className="muted small brain-note">🧠 Reste sur le quiz (cet onglet, cette fenêtre) jusqu'à ta réponse pour la prime cerveau (+100).{q.data.strict ? " Mode strict : quitter le quiz donne 0." : ""}</p>}
       {done && (
         <div className="lockmsg">
-          {answered ? "Réponse verrouillée." : "Temps écoulé!"} En attente des autres…
+          {answered ? (q.type === "hunt" ? "Tout trouvé!" : "Réponse verrouillée.") : "Temps écoulé!"} En attente des autres…
           <span className="mono">{s.answered.length} / {s.presence.length}</span>
           <span className="row" style={{ gap: 4 }}>{s.answered.map((id) => <Avatar key={id} p={s.players[id]} size="sm" />)}</span>
         </div>
@@ -280,13 +283,14 @@ function RevealView({ s, me, onRate }: { s: PublicState; me: Player; onRate: (n:
   const didAnswer = pts !== undefined;
   const ok = (pts ?? 0) > 0;
   const title = author ? (author.bonus ? "Question bien dosée!" : "Pas assez dosée…")
+    : q.type === "hunt" ? (!didAnswer ? "Bredouille!" : r.detail[me.id]?.startsWith("Tout trouvé") ? "Tout trouvé!" : ok ? "Pas mal, l'œil!" : "Bredouille!")
     : !didAnswer ? "Trop tard!" : q.type === "majority" ? (ok ? "Tu penses comme la gang!" : "Esprit libre!") : q.type === "closest" ? (r.detail[me.id] === "Dans le mille" ? "Dans le mille!" : ok ? "Pas loin!" : "Matt t'a eu.") : ok ? "Bonne réponse!" : "Oups!";
   const last = s.qIndex === s.qCount - 1;
   return (
     <>
       <QHead s={s} right={<span className="eyebrow">Réponse révélée</span>} />
-      <div className="reveal-top">
-        <Visual q={q} small tag={q.type === "music" ? "Matt · en direct" : undefined} />
+      <div className={`reveal-top${q.type === "hunt" ? " solo" : ""}`}>
+        {q.type !== "hunt" && <Visual q={q} small tag={q.type === "music" ? "Matt · en direct" : undefined} />}
         <div className="verdict-box">
           <h2 className={`verdict${ok ? " ok" : ""}`}>{title}</h2>
           <div className={`gain${(pts ?? 0) < 0 ? " neg" : !pts ? " zero" : ""}`}>{signed(pts ?? 0)} pts</div>

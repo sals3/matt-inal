@@ -12,6 +12,10 @@ export const SUDDEN_PENALTY = 300;
 export const STAKE_MAX = 1000;
 export const STAKE_BASE = 500;
 export const HELP_BONUS = 100;
+/** 🔎 Chasse : tout trouver vaut 1 000 + vitesse ; sinon une part de 700 selon les objets trouvés. */
+export const HUNT_PARTIAL = 700;
+/** 🔎 Un clic dans le vide étourdit un moment : pas de mitraillage au hasard. */
+export const HUNT_STUN_MS = 1500;
 
 export interface RawAnswer {
   playerId: string;
@@ -67,6 +71,7 @@ export function validAnswer(q: Question, value: unknown): unknown {
     if (!Number.isFinite(n)) return undefined;
     return Math.min(q.data.max ?? n, Math.max(q.data.min ?? n, n));
   }
+  if (q.type === "hunt") return undefined; // On clique dans l'image (message « tap »).
   if (q.type === "music") {
     const v = (value ?? {}) as Record<string, unknown>;
     const s = (x: unknown) => String(x ?? "").trim().slice(0, 120);
@@ -109,6 +114,15 @@ export function scoreQuestion(q: Question, answers: RawAnswer[]): Reveal {
       points[a.playerId] = p > 0 ? (p + bonus(a)) * mult : 0;
     });
     reveal.answer = target;
+  } else if (q.type === "hunt") {
+    const n = q.data.spots?.length ?? 0;
+    for (const a of answers) {
+      const found = ((a.value as { found?: number[] } | null)?.found ?? []).length;
+      picks[a.playerId] = found;
+      const all = n > 0 && found >= n;
+      points[a.playerId] = all ? (BASE + bonus(a)) * mult : Math.round((HUNT_PARTIAL * found) / Math.max(1, n)) * mult;
+      detail[a.playerId] = all ? `Tout trouvé (${n}/${n})` : `${found}/${n} objets trouvés`;
+    }
   } else if (q.type === "music") {
     const year = q.data.year ?? null;
     reveal.music = { title: q.data.title ?? "", artist: q.data.artist ?? "", year };
