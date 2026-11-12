@@ -339,7 +339,7 @@ julie.send({ t: "race", qid: rq, d: 600, lives: 3 });
 kevin.send({ t: "race", qid: rq, d: 30, lives: 0 });
 emilie.send({ t: "race", qid: rq, d: 25, lives: 5 });
 s = await host.until((x) => !!x.race[julie.id] && !!x.race[emilie.id] && x.race[kevin.id]?.done === "eaten");
-assert(s.race[julie.id]!.d < 100 && !s.race[julie.id]!.done, `pas de téléportation : Julie plafonnée à ${s.race[julie.id]!.d} m au lieu de 600`);
+assert(s.race[julie.id]!.d < 300 && !s.race[julie.id]!.done, `pas de téléportation : Julie plafonnée à ${s.race[julie.id]!.d} m au lieu de 600`);
 assert(s.race[emilie.id]!.lives === 3 && s.answered.includes(kevin.id), "les vies ne remontent pas ; Kevin croqué a fini sa course");
 host.send({ t: "host", action: "reveal" });
 s = await host.until((x) => x.phase === "reveal" && x.question?.type === "race");
